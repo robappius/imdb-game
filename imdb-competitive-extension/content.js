@@ -1,7 +1,7 @@
 // content.js
 // IMDB Competitive Click Race - rebuilt; host now redirects to actorA immediately on create
 
-const FIREBASE_DB_URL = "https://imdb-game-343f1-default-rtdb.firebaseio.com"; // root (no .json)
+const FIREBASE_DB_URL = "https://imdb-game-343f1-default-rtdb.firebaseio.com"; // Corrected URL
 const GAMES_ROOT = `${FIREBASE_DB_URL}/games`;
 
 // ----------------------
@@ -166,7 +166,73 @@ gameInfo.style.marginBottom = "8px";
 gameInfo.innerHTML = "Game: <em>Not in a game</em>";
 uiBox.appendChild(gameInfo);
 
-// controls row
+// --- WINNER MESSAGE CONTAINER ---
+const winnerBox = document.createElement("div");
+Object.assign(winnerBox.style, {
+  position: "absolute",
+  top: "0",
+  left: "0",
+  width: "100%",
+  height: "100%",
+  backgroundColor: "rgba(0,0,0,0.85)",
+  color: "#f5c518",
+  display: "none",
+  flexDirection: "column",
+  justifyContent: "center",
+  alignItems: "center",
+  borderRadius: "10px",
+  textAlign: "center",
+  fontSize: "20px",
+  padding: "12px",
+  boxSizing: "border-box"
+});
+
+// Container for the winner/leaderboard text
+const winnerTextContainer = document.createElement("div");
+winnerTextContainer.style.marginBottom = "15px";
+winnerBox.appendChild(winnerTextContainer);
+
+// Main winner text element (for 1st place)
+const winnerText = document.createElement("div");
+Object.assign(winnerText.style, {
+  fontWeight: "bold",
+  fontSize: "1.4em", 
+  marginBottom: "8px",
+  textShadow: "1px 1px 2px #000"
+});
+winnerTextContainer.appendChild(winnerText);
+
+// Leaderboard list element (for 2nd, 3rd, etc. and Give Up players)
+const leaderboardList = document.createElement("div");
+Object.assign(leaderboardList.style, {
+    fontSize: "0.8em",
+    fontWeight: "normal",
+    display: "flex",
+    flexDirection: "column",
+    gap: "4px",
+    maxWidth: "80%",
+    margin: "0 auto"
+});
+winnerTextContainer.appendChild(leaderboardList);
+
+
+// Play Again Button
+const playAgainBtn = document.createElement("button");
+playAgainBtn.textContent = "Play Again";
+Object.assign(playAgainBtn.style, { 
+    padding: "8px 12px", 
+    borderRadius: "6px", 
+    background: "#f5c518", 
+    color: "#000", 
+    border: "2px solid #000", 
+    fontWeight: "bold",
+    cursor: "pointer" 
+});
+winnerBox.appendChild(playAgainBtn);
+
+uiBox.appendChild(winnerBox); // Append winner box to the main UI box
+
+// controls row (Create/Join)
 const btnRow = document.createElement("div");
 btnRow.style.marginBottom = "8px";
 uiBox.appendChild(btnRow);
@@ -181,10 +247,37 @@ joinBtn.textContent = "Join Game";
 Object.assign(joinBtn.style, { padding: "6px 8px", borderRadius: "6px", background: "#000", color: "#fff", border: "none", cursor: "pointer" });
 btnRow.appendChild(joinBtn);
 
+// Action buttons (Leave/Give Up)
+const actionRow = document.createElement("div");
+actionRow.style.marginTop = "6px";
+actionRow.style.display = "none";
+uiBox.appendChild(actionRow);
+
+// Give Up Button (New)
+const giveUpBtn = document.createElement("button");
+giveUpBtn.textContent = "Give Up";
+Object.assign(giveUpBtn.style, { 
+    padding: "6px 8px", 
+    marginRight: "6px", 
+    borderRadius: "6px", 
+    background: "#ff6347", 
+    color: "#fff", 
+    border: "none", 
+    cursor: "pointer" 
+});
+actionRow.appendChild(giveUpBtn);
+
 const leaveBtn = document.createElement("button");
 leaveBtn.textContent = "Leave Game";
-Object.assign(leaveBtn.style, { display: "none", marginTop: "6px", padding: "6px 8px", borderRadius: "6px", background: "#b22222", color: "#fff", border: "none", cursor: "pointer" });
-uiBox.appendChild(leaveBtn);
+Object.assign(leaveBtn.style, { 
+    padding: "6px 8px", 
+    borderRadius: "6px", 
+    background: "#b22222", 
+    color: "#fff", 
+    border: "none", 
+    cursor: "pointer" 
+});
+actionRow.appendChild(leaveBtn);
 
 // Name input
 const nameRow = document.createElement("div");
@@ -258,7 +351,6 @@ uiBox.appendChild(hintDiv);
 // Initialization
 (async function init() {
   try {
-    // UPDATED: Added 'hasRedirected' to keys retrieved
     const stored = await storageGet(['playerId', 'gameId', 'actorPair', 'clicks', 'displayName', 'role', 'hasRedirected']);
     if (stored.playerId) playerId = stored.playerId;
     else {
@@ -270,7 +362,6 @@ uiBox.appendChild(hintDiv);
     nameInput.value = displayName;
 
     if (stored.role) role = stored.role;
-    // NEW: Load hasRedirected state
     if (stored.hasRedirected) hasRedirected = stored.hasRedirected; 
 
     if (stored.gameId) {
@@ -302,6 +393,117 @@ function refreshStatusUI(snapshotGame) {
     }
   }
 
+  // --- WINNER LOGIC FOR UI ---
+  if (snapshotGame && snapshotGame.winner && snapshotGame.winnerClicks) {
+    const players = snapshotGame.players || {};
+    
+    // 1. Separate players into two groups
+    const allPlayers = Object.keys(players).map(pid => ({ pid, ...players[pid] }));
+
+    const finishedPlayers = allPlayers
+      .filter(p => p.finishedAt && !p.gaveUp) // Only count finishers who didn't give up
+      .sort((a, b) => (a.clicks || Infinity) - (b.clicks || Infinity));
+      
+    const gaveUpPlayers = allPlayers
+      .filter(p => p.gaveUp); // These players have no score, so no need to sort
+
+    leaderboardList.innerHTML = '';
+    
+    if (finishedPlayers.length > 0) {
+        // Display 1st Place (The Winner)
+        const winner = finishedPlayers[0];
+        const winnerName = winner.name || winner.pid;
+        winnerText.innerHTML = `🏁 **${winnerName} WINS!** 🏆`;
+        
+        // Display the rest of the finished leaderboard
+        finishedPlayers.forEach((player, index) => {
+            const rank = index + 1;
+            const playerName = player.name || player.pid;
+            const clicks = player.clicks;
+            
+            const listItem = document.createElement('div');
+            // Use correct ordinal suffix
+            const suffix = rank === 1 ? 'st' : (rank === 2 ? 'nd' : (rank === 3 ? 'rd' : 'th'));
+            
+            listItem.innerHTML = `**${rank}${suffix} Place:** ${playerName} (${clicks} clicks)`;
+            listItem.style.textAlign = 'center';
+            
+            // Highlight the current player if they finished
+            if (player.pid === playerId) {
+                 listItem.style.fontWeight = 'bold';
+                 listItem.style.color = '#fff';
+            }
+            
+            leaderboardList.appendChild(listItem);
+        });
+        
+    } else {
+        // This handles cases where a game ends but nobody actually finished (e.g. everyone gave up)
+        winnerText.innerHTML = `Game Ended`;
+        leaderboardList.innerHTML = 'No finishers recorded.';
+    }
+    
+    // 2. Append Gave Up players at the bottom
+    if (gaveUpPlayers.length > 0) {
+        const divider = document.createElement('div');
+        divider.style.borderTop = '1px dashed rgba(245, 197, 24, 0.4)';
+        divider.style.margin = '8px 0';
+        leaderboardList.appendChild(divider);
+        
+        const gaveUpHeader = document.createElement('div');
+        gaveUpHeader.textContent = 'Non-Finishers:';
+        gaveUpHeader.style.fontWeight = 'bold';
+        gaveUpHeader.style.marginTop = '4px';
+        leaderboardList.appendChild(gaveUpHeader);
+        
+        gaveUpPlayers.forEach(player => {
+            const playerName = player.name || player.pid;
+            const listItem = document.createElement('div');
+            listItem.innerHTML = `${playerName} — **Gave Up** 🏳️`;
+            listItem.style.textAlign = 'center';
+            listItem.style.opacity = '0.8';
+            
+            if (player.pid === playerId) {
+                 listItem.style.fontWeight = 'bold';
+                 listItem.style.color = '#fff';
+                 listItem.style.opacity = '1';
+            }
+            
+            leaderboardList.appendChild(listItem);
+        });
+    }
+
+
+    winnerBox.style.display = "flex"; // Show the overlay
+    
+    // Hide standard lobby/controls
+    lobbyBox.style.display = "none";
+    btnRow.style.display = "none";
+    nameRow.style.display = "none";
+    actionRow.style.display = "none";
+    
+  } else {
+    // Hide winner box if no winner or game is not finished
+    winnerBox.style.display = "none";
+    if (gameId) {
+        // Only show controls/lobby if a game is active
+        lobbyBox.style.display = "block";
+        btnRow.style.display = "block";
+        nameRow.style.display = "flex";
+        
+        // Only show Give Up if the game is started and current player hasn't finished/given up
+        const isStarted = snapshotGame && snapshotGame.startedAt;
+        const currentPlayer = snapshotGame?.players?.[playerId];
+        const canGiveUp = isStarted && currentPlayer && !currentPlayer.finishedAt && !currentPlayer.gaveUp;
+
+        actionRow.style.display = "block";
+        giveUpBtn.style.display = canGiveUp ? "inline-block" : "none";
+        
+    } else {
+        actionRow.style.display = "none";
+    }
+  }
+
   let text = `Player ID: ${playerId}\nName: ${displayName}\nClicks: ${clicks}\n\n`;
   statusDiv.textContent = text;
 }
@@ -312,16 +514,42 @@ function renderPlayersList(playersObj) {
     playersList.textContent = "No players yet.";
     return;
   }
-  const keys = Object.keys(playersObj);
-  for (const pid of keys) {
-    const p = playersObj[pid] || {};
+  
+  const allPlayers = Object.keys(playersObj).map(pid => ({ pid, ...playersObj[pid] }));
+
+  // 1. Sort Finished players by clicks
+  const finishedPlayers = allPlayers
+    .filter(p => p.finishedAt && !p.gaveUp) // Only count finishers who didn't give up
+    .sort((a, b) => (a.clicks || Infinity) - (b.clicks || Infinity));
+    
+  // 2. Collect Active players (not finished and not given up)
+  const activePlayers = allPlayers
+    .filter(p => !p.finishedAt && !p.gaveUp);
+
+  // 3. Collect Gave Up players
+  const gaveUpPlayers = allPlayers
+    .filter(p => p.gaveUp);
+
+  // Combine in order: Finished, Active, Gave Up
+  const sortedPlayers = [...finishedPlayers, ...activePlayers, ...gaveUpPlayers];
+
+  for (const p of sortedPlayers) {
     const row = document.createElement("div");
     row.style.padding = "4px 0";
     row.style.fontSize = "13px";
-    const label = pid === playerId ? `${p.name || pid} (You)` : (p.name || pid);
-    const clicksLabel = typeof p.clicks !== 'undefined' ? ` — ${p.clicks} clicks` : "";
-    const finishedLabel = p.finishedAt ? " ✅ finished" : "";
-    row.textContent = label + clicksLabel + finishedLabel;
+    const label = p.pid === playerId ? `${p.name || p.pid} (You)` : (p.name || p.pid);
+    
+    let statusLabel = "";
+    if (p.finishedAt) {
+      statusLabel = ` — ${p.clicks} clicks ✅ finished`;
+    } else if (p.gaveUp) {
+      statusLabel = " — **GAVE UP** 🏳️";
+      row.style.opacity = '0.6';
+    } else if (typeof p.clicks !== 'undefined') {
+      statusLabel = ` — ${p.clicks} clicks`;
+    }
+
+    row.innerHTML = label + statusLabel;
     playersList.appendChild(row);
   }
 }
@@ -331,14 +559,21 @@ function updateGameControls() {
   startBtn.style.display = inGame ? "none" : "inline-block";
   joinBtn.style.display = inGame ? "none" : "inline-block";
   joinRow.style.display = inGame ? "none" : "none"; // joinRow toggled by clicking Join button
-  leaveBtn.style.display = inGame ? "inline-block" : "none";
+  // leave/give up logic is now handled in refreshStatusUI based on game state
+  actionRow.style.display = inGame ? "block" : "none"; 
   lobbyBox.style.display = inGame ? "block" : "none";
+  
+  if (!inGame) {
+     winnerBox.style.display = "none";
+     btnRow.style.display = "block";
+     nameRow.style.display = "flex";
+     lobbyBox.style.display = "none"; // Hide lobby box when no game is active
+  }
 }
 
 // ----------------------
 // Game operations
 
-// REPLACED: createGameAndStart - host creates game AND immediately sets startedAt and redirects to actorA
 async function createGameAndStart() {
   const id = randId(5);
   gameId = id;
@@ -351,7 +586,7 @@ async function createGameAndStart() {
   const gameObj = {
     actorA: actorPair[0],
     actorB: actorPair[1],
-    players: { [playerId]: { clicks: 0, name: displayName } },
+    players: { [playerId]: { clicks: 0, name: displayName, gaveUp: false } },
     status: "active",
     winner: null,
     winnerClicks: null,
@@ -372,7 +607,6 @@ async function createGameAndStart() {
     // redirect host immediately to actorA
     if (actorPair && actorPair[0] && actorPair[0].url) {
       hasRedirected = true;
-      // FIX: Persist hasRedirected state
       await storageSet({ hasRedirected }); 
       window.location.href = actorPair[0].url;
     }
@@ -395,7 +629,7 @@ async function joinGameWithId(inputId) {
     clicks = 0;
 
     // add self to players
-    await dbPatch(`${gameId}/players/${playerId}`, { clicks: 0, name: displayName });
+    await dbPatch(`${gameId}/players/${playerId}`, { clicks: 0, name: displayName, gaveUp: false });
     await storageSet({ gameId, actorPair, clicks });
     role = 'guest';
     await storageSet({ role });
@@ -411,22 +645,92 @@ async function joinGameWithId(inputId) {
   }
 }
 
-async function leaveGame() {
-  if (!gameId) { alert("Not in a game."); return; }
+async function giveUpGame() {
+    if (!gameId || !confirm("Are you sure you want to give up? You will be excluded from winning.")) return;
+    
+    stopPolling(); // Stop polling immediately for the player giving up
+
+    try {
+        // 1. Set the gaveUp flag for the current player
+        await dbPatch(`${gameId}/players/${playerId}`, { gaveUp: true, finishedAt: null, name: displayName });
+        
+        // 2. Fetch the updated game state
+        const snapshot = await dbGet(`${gameId}`);
+        const players = snapshot?.players || {};
+        const playerIds = Object.keys(players);
+        
+        // 3. Check for automatic game end 
+        // Only consider players who DID NOT give up when checking finishers
+        const finishedPlayers = playerIds.filter(pid => 
+            players[pid] && players[pid].finishedAt && !players[pid].gaveUp
+        );
+        const activePlayers = playerIds.filter(pid => 
+            players[pid] && !players[pid].finishedAt && !players[pid].gaveUp
+        );
+        
+        // Game ends if: 
+        // a) There is exactly one valid finisher AND
+        // b) There are zero active, non-finished players left.
+        if (finishedPlayers.length === 1 && activePlayers.length === 0) {
+            const winnerPid = finishedPlayers[0];
+            const winnerClicks = players[winnerPid].clicks;
+            
+            // Set winner and status
+            await dbPatch(`${gameId}`, { 
+                winner: winnerPid, 
+                winnerClicks: winnerClicks, 
+                status: "finished" 
+            });
+            console.log(`Game ended instantly: ${winnerPid} won by default.`);
+            
+            // Update UI with the final state
+            refreshStatusUI(await dbGet(`${gameId}`));
+        } else {
+            // If the game didn't end instantly, update UI with the 'gave up' status
+            refreshStatusUI(snapshot); 
+        }
+
+    } catch (err) {
+        console.error("Failed to give up game", err);
+        alert("Failed to give up.");
+    }
+}
+
+async function leaveGame(shouldRestart = false) {
+  if (!gameId) { 
+      // If we're forcing a restart, and not in a game, just execute the restart logic.
+      if (shouldRestart) {
+          stopPolling();
+          gameId = null;
+          actorPair = null;
+          clicks = 0;
+          role = null;
+          hasRedirected = false;
+          refreshStatusUI();
+          updateGameControls();
+      } else {
+        alert("Not in a game."); 
+      }
+      return;
+  }
+  
   try {
     // Remove player entry (set to null)
     await dbPatch(`${gameId}/players/${playerId}`, null);
   } catch (err) {
     console.warn("Failed to remove player from DB", err);
   }
+  
+  // Clear local state and storage
   stopPolling();
-  // FIX: Clear hasRedirected state upon leaving
   await storageRemove(['gameId', 'actorPair', 'clicks', 'role', 'hasRedirected']); 
   gameId = null;
   actorPair = null;
   clicks = 0;
   role = null;
   hasRedirected = false;
+  
+  // Re-run UI update
   refreshStatusUI();
   updateGameControls();
 }
@@ -443,11 +747,18 @@ async function pollOnce() {
     }
 
     // Update UI & players list every poll
-    refreshStatusUI(snapshot);
+    refreshStatusUI(snapshot); // This now handles displaying the winner message and buttons
     renderPlayersList(snapshot.players || {});
 
     const players = snapshot.players || {};
     const playerIds = Object.keys(players);
+    const currentPlayer = players[playerId];
+    
+    // If the current player has given up, stop polling for them, but let the game continue
+    if (currentPlayer && currentPlayer.gaveUp) {
+        stopPolling();
+        return;
+    }
 
     // If we're host and there are >=2 players and game has not started, attempt to set startedAt
     if (!snapshot.startedAt && role === 'host' && playerIds.length >= 2) {
@@ -469,23 +780,62 @@ async function pollOnce() {
       await storageSet({ gameId });
       if (actorPair && actorPair[0] && actorPair[0].url) {
         hasRedirected = true;
-        // FIX: Persist hasRedirected state
         await storageSet({ hasRedirected }); 
         window.location.href = actorPair[0].url;
         return;
       }
     }
 
-    // Winner determination: if two finished and no winner, compute winner
-    const finishedPids = playerIds.filter(pid => players[pid] && players[pid].finishedAt);
-    if (finishedPids.length >= 2 && !snapshot.winner) {
-      let winnerPid = finishedPids[0];
-      let minClicks = players[winnerPid].clicks || Infinity;
-      for (const pid of finishedPids) {
-        const c = Number(players[pid].clicks) || Infinity;
-        if (c < minClicks) { minClicks = c; winnerPid = pid; }
+    // Winner determination (Host-only logic): 
+    
+    // 1. Filter out players who gave up before checking for the winner
+    const finishedPlayers = playerIds.filter(pid => 
+        players[pid] && players[pid].finishedAt && !players[pid].gaveUp
+    );
+    
+    // 2. Check for game conclusion conditions
+    let conclude = false;
+    
+    // Standard condition: two or more finished players
+    if (finishedPlayers.length >= 2) {
+        conclude = true;
+    }
+    
+    // Special condition: one finished player and zero active players
+    if (!conclude && finishedPlayers.length === 1) {
+        const activePlayers = playerIds.filter(pid => 
+            players[pid] && !players[pid].finishedAt && !players[pid].gaveUp
+        );
+        if (activePlayers.length === 0) {
+            conclude = true; // One finisher, everyone else is out/given up. Declare them the winner.
+        }
+    }
+
+    if (conclude && !snapshot.winner && role === 'host') { 
+      let winnerPid;
+      let minClicks;
+
+      if (finishedPlayers.length > 0) {
+        // If there are finishers, find the one with min clicks
+        winnerPid = finishedPlayers[0];
+        minClicks = players[winnerPid].clicks || Infinity;
+        
+        for (const pid of finishedPlayers) {
+          const c = Number(players[pid].clicks) || Infinity;
+          if (c < minClicks) { minClicks = c; winnerPid = pid; }
+        }
+      } else {
+        // This case should be prevented by the 'finishedPlayers.length > 0' check.
+        return; 
       }
-      await dbPatch(`${gameId}`, { winner: winnerPid, winnerClicks: minClicks, status: "finished" });
+      
+      // Update DB with winner and set status to finished
+      await dbPatch(`${gameId}`, { 
+          winner: winnerPid, 
+          winnerClicks: minClicks, 
+          status: "finished" 
+      });
+      console.log(`Host set winner: ${winnerPid} in ${minClicks} clicks.`);
     }
 
   } catch (err) {
@@ -532,7 +882,8 @@ document.addEventListener("click", async (event) => {
   clicks = (Number(clicks) || 0) + 1;
   try {
     await storageSet({ clicks });
-    await dbPatch(`${gameId}/players/${playerId}`, { clicks, name: displayName });
+    // Ensure gaveUp is explicitly set to false on a click
+    await dbPatch(`${gameId}/players/${playerId}`, { clicks, name: displayName, gaveUp: false }); 
   } catch (err) {
     console.error("Failed to persist click", err);
   }
@@ -541,7 +892,7 @@ document.addEventListener("click", async (event) => {
   if (targetUrl && href.startsWith(targetUrl)) {
     try {
       await dbPatch(`${gameId}/players/${playerId}`, { finishedAt: Date.now(), name: displayName });
-      alert(`You reached ${actorPair[1].name} in ${clicks} clicks.`);
+      // The poll function will now detect the winner and display the message to all players.
     } catch (err) {
       console.error("Failed to set finishedAt", err);
     }
@@ -573,12 +924,19 @@ leaveBtn.addEventListener("click", () => {
   updateGameControls();
 });
 
+// New: Give Up Button Listener
+giveUpBtn.addEventListener("click", giveUpGame);
+
 nameSaveBtn.addEventListener("click", async () => {
   displayName = (nameInput.value || "").trim() || displayName || `Player-${playerId}`;
   await storageSet({ displayName });
   if (gameId) {
     try {
-      await dbPatch(`${gameId}/players/${playerId}`, { name: displayName });
+      // Also update the name on the server, ensuring gaveUp status is preserved or defaulted
+      await dbPatch(`${gameId}/players/${playerId}`, { 
+          name: displayName, 
+          gaveUp: (await dbGet(`${gameId}/players/${playerId}/gaveUp`)) || false
+      }); 
     } catch (err) {
       console.warn("Failed to update name on server", err);
     }
@@ -586,10 +944,15 @@ nameSaveBtn.addEventListener("click", async () => {
   refreshStatusUI();
 });
 
+// Play Again Button Listener
+playAgainBtn.addEventListener("click", () => {
+    // Leaves the current game (clears storage/state), then restarts the UI state
+    leaveGame(true);
+});
+
 // ----------------------
 // Initial rehydration
 (async function initialRefresh() {
-  // UPDATED: Added 'hasRedirected' to keys retrieved
   const stored = await storageGet(['playerId', 'gameId', 'actorPair', 'clicks', 'displayName', 'role', 'hasRedirected']);
   if (stored.playerId) playerId = stored.playerId;
   if (stored.displayName) {
@@ -597,7 +960,6 @@ nameSaveBtn.addEventListener("click", async () => {
     nameInput.value = displayName;
   }
   if (stored.role) role = stored.role;
-  // NEW: Load hasRedirected state
   if (stored.hasRedirected) hasRedirected = stored.hasRedirected; 
 
   if (stored.gameId) {
