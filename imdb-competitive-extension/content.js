@@ -228,206 +228,244 @@ uiBox.appendChild(hintDiv);
 })();
 
 // ----------------------
+// ----------------------
 // UI helper
 function refreshStatusUI(snapshotGame) {
-  if (snapshotGame) {
-    gameInfo.innerHTML = `Game: <strong>${gameId}</strong><br>Target: ${snapshotGame.actorA.name} → ${snapshotGame.actorB.name}`;
-    actorPair = [snapshotGame.actorA, snapshotGame.actorB];
-    storageSet({ actorPair }).catch(() => {});
-  } else {
-    if (gameId && actorPair) gameInfo.innerHTML = `Game: <strong>${gameId}</strong><br>Target: ${actorPair[0].name} → ${actorPair[1].name}`;
-    else gameInfo.innerHTML = "Game: <em>Not in a game</em>";
-  }
-
-  let text = `Player ID: ${playerId}\nClicks: ${clicks}\n\n`;
-  if (snapshotGame && snapshotGame.players) {
-    const players = snapshotGame.players;
-    for (const pid of Object.keys(players)) {
-      const p = players[pid] || { clicks: 0 };
-      const label = pid === playerId ? "You" : `Opponent (${pid})`;
-      text += `${label}: ${p.clicks} clicks`;
-      if (p.finishedAt) text += ` (Reached ${ actorPair ? actorPair[1].name : 'target' })`;
-      text += "\n";
+    if (snapshotGame) {
+      gameInfo.innerHTML = `Game: <strong>${gameId}</strong><br>Target: ${snapshotGame.actorA.name} → ${snapshotGame.actorB.name}`;
+      actorPair = [snapshotGame.actorA, snapshotGame.actorB];
+      storageSet({ actorPair }).catch(() => {});
+    } else {
+      if (gameId && actorPair)
+        gameInfo.innerHTML = `Game: <strong>${gameId}</strong><br>Target: ${actorPair[0].name} → ${actorPair[1].name}`;
+      else
+        gameInfo.innerHTML = "Game: <em>Not in a game</em>";
     }
-    if (snapshotGame.winner) {
-      const winLabel = snapshotGame.winner === playerId ? "You WIN!" : `Opponent (${snapshotGame.winner}) wins`;
-      text += `\n${winLabel} in ${snapshotGame.winnerClicks} clicks\n`;
-    }
-  }
-  statusDiv.textContent = text;
-}
-
-// ----------------------
-// Game operations
-async function createGameAndStart() {
-  const id = randId(5);
-  gameId = id;
-
-  const shuffled = [...actorList].sort(() => Math.random() - 0.5);
-  actorPair = [shuffled[0], shuffled[1]];
-  clicks = 0;
-
-  const gameObj = {
-    actorA: actorPair[0],
-    actorB: actorPair[1],
-    players: { [playerId]: { clicks: 0 } },
-    status: "active",
-    winner: null,
-    winnerClicks: null,
-    createdAt: Date.now()
-  };
-
-  try {
-    await dbPut(`${gameId}`, gameObj);
-    await storageSet({ gameId, actorPair, clicks });
-    refreshStatusUI(gameObj);
-    startPolling();
-
-    await storageSet({ role: 'host' }).catch(()=>{});
-
-    window.location.href = actorPair[0].url;
-  } catch (err) {
-    console.error("createGameAndStart failed", err);
-    alert("Failed to create game. Check DB URL / rules.");
-  }
-}
-
-async function joinGameWithId(inputId) {
-  const id = (inputId || "").trim().toUpperCase();
-  if (!id) { alert("Enter a Game ID."); return; }
-
-  try {
-    const game = await dbGet(`${id}`);
-    if (!game) { alert("Game not found: " + id); return; }
-
-    gameId = id;
-    actorPair = [game.actorA, game.actorB];
-    clicks = 0;
-
-    await dbPatch(`${gameId}/players/${playerId}`, { clicks: 0 });
-    await storageSet({ gameId, actorPair, clicks });
-    refreshStatusUI(game);
-    startPolling();
-
-    await storageSet({ role: 'guest' }).catch(()=>{});
-
-    await sleep(200);
-    window.location.href = actorPair[0].url;
-  } catch (err) {
-    console.error("joinGameWithId failed", err);
-    alert("Failed to join game. Check DB URL and code.");
-  }
-}
-
-async function leaveGame() {
-  if (!gameId) { alert("Not in a game."); return; }
-  try {
-    await dbPatch(`${gameId}/players/${playerId}`, null);
-  } catch (err) {
-    console.warn("Failed to remove player from DB", err);
-  }
-  stopPolling();
-  await storageRemove(['gameId', 'actorPair', 'clicks']);
-  gameId = null; actorPair = null; clicks = 0;
-  refreshStatusUI();
-}
-
-// ----------------------
-// Polling / winner determination
-async function pollOnce() {
-  if (!gameId) return;
-  try {
-    const snapshot = await dbGet(`${gameId}`);
-    if (!snapshot) { gameInfo.innerHTML = `Game: <em>Not found</em>`; return; }
-    refreshStatusUI(snapshot);
-
-    const players = snapshot.players || {};
-    const finishedPids = Object.keys(players).filter(pid => players[pid].finishedAt);
-    if (finishedPids.length >= 2 && !snapshot.winner) {
-      let winnerPid = finishedPids[0];
-      let minClicks = players[winnerPid].clicks || Infinity;
-      for (const pid of finishedPids) {
-        const c = Number(players[pid].clicks) || Infinity;
-        if (c < minClicks) { minClicks = c; winnerPid = pid; }
+  
+    let text = `Player ID: ${playerId}\nClicks: ${clicks}\n\n`;
+    if (snapshotGame && snapshotGame.players) {
+      const players = snapshotGame.players;
+      for (const pid of Object.keys(players)) {
+        const p = players[pid] || { clicks: 0 };
+        const label = pid === playerId ? "You" : `Opponent (${pid})`;
+        text += `${label}: ${p.clicks} clicks`;
+        if (p.finishedAt) text += ` (Reached ${actorPair ? actorPair[1].name : 'target'})`;
+        text += "\n";
       }
-      await dbPatch(`${gameId}`, { winner: winnerPid, winnerClicks: minClicks, status: "finished" });
+      if (snapshotGame.winner) {
+        const winLabel = snapshotGame.winner === playerId ? "You WIN!" : `Opponent (${snapshotGame.winner}) wins`;
+        text += `\n${winLabel} in ${snapshotGame.winnerClicks} clicks\n`;
+      }
     }
-  } catch (err) {
-    console.error("pollOnce error", err);
+    statusDiv.textContent = text;
   }
-}
-
-function startPolling() {
-  if (pollingInterval) return;
-  pollOnce();
-  pollingInterval = setInterval(pollOnce, 1000);
-}
-function stopPolling() {
-  if (pollingInterval) { clearInterval(pollingInterval); pollingInterval = null; }
-}
-
-// ----------------------
-// CLICK TRACKING (only actor page clicks)
-document.addEventListener("click", async (event) => {
-  if (!gameId || !playerId) return;
-
-  const a = event.target.closest("a");
-  if (!a) return;
-
-  let href = a.getAttribute("href");
-  if (!href) return;
-
-  if (href.startsWith("/")) href = "https://www.imdb.com" + href;
-  if (!href.startsWith("http")) return;
-
-// Only actor pages count (allow extra query params)
-if (!/^https:\/\/www\.imdb\.com\/name\/nm\d+\/?/.test(href)) return;
-
-  if (!actorPair) {
+  
+  // ----------------------
+  // NEW: Show/hide UI depending on game state
+  function updateGameControls() {
+    const inGame = !!gameId;
+  
+    startBtn.style.display = inGame ? "none" : "inline-block";
+    joinBtn.style.display = inGame ? "none" : "inline-block";
+    joinRow.style.display = inGame ? "none" : "block";
+    leaveBtn.style.display = inGame ? "inline-block" : "none";
+  }
+  
+  // ----------------------
+  // Game operations
+  async function createGameAndStart() {
+    const id = randId(5);
+    gameId = id;
+  
+    const shuffled = [...actorList].sort(() => Math.random() - 0.5);
+    actorPair = [shuffled[0], shuffled[1]];
+    clicks = 0;
+  
+    const gameObj = {
+      actorA: actorPair[0],
+      actorB: actorPair[1],
+      players: { [playerId]: { clicks: 0 } },
+      status: "active",
+      winner: null,
+      winnerClicks: null,
+      createdAt: Date.now()
+    };
+  
+    try {
+      await dbPut(`${gameId}`, gameObj);
+      await storageSet({ gameId, actorPair, clicks });
+      refreshStatusUI(gameObj);
+      updateGameControls(); // <-- ADDED
+      startPolling();
+  
+      await storageSet({ role: 'host' }).catch(()=>{});
+  
+      window.location.href = actorPair[0].url;
+    } catch (err) {
+      console.error("createGameAndStart failed", err);
+      alert("Failed to create game. Check DB URL / rules.");
+    }
+  }
+  
+  async function joinGameWithId(inputId) {
+    const id = (inputId || "").trim().toUpperCase();
+    if (!id) { alert("Enter a Game ID."); return; }
+  
+    try {
+      const game = await dbGet(`${id}`);
+      if (!game) { alert("Game not found: " + id); return; }
+  
+      gameId = id;
+      actorPair = [game.actorA, game.actorB];
+      clicks = 0;
+  
+      await dbPatch(`${gameId}/players/${playerId}`, { clicks: 0 });
+      await storageSet({ gameId, actorPair, clicks });
+      refreshStatusUI(game);
+      updateGameControls(); // <-- ADDED
+      startPolling();
+  
+      await storageSet({ role: 'guest' }).catch(()=>{});
+  
+      await sleep(200);
+      window.location.href = actorPair[0].url;
+    } catch (err) {
+      console.error("joinGameWithId failed", err);
+      alert("Failed to join game. Check DB URL and code.");
+    }
+  }
+  
+  async function leaveGame() {
+    if (!gameId) { alert("Not in a game."); return; }
+    try {
+      await dbPatch(`${gameId}/players/${playerId}`, null);
+    } catch (err) {
+      console.warn("Failed to remove player from DB", err);
+    }
+    stopPolling();
+    await storageRemove(['gameId', 'actorPair', 'clicks']);
+    gameId = null; actorPair = null; clicks = 0;
+    refreshStatusUI();
+    updateGameControls(); // <-- ADDED
+  }
+  
+  // ----------------------
+  // Polling / winner determination
+  async function pollOnce() {
+    if (!gameId) return;
     try {
       const snapshot = await dbGet(`${gameId}`);
-      if (snapshot && snapshot.actorA && snapshot.actorB) actorPair = [snapshot.actorA, snapshot.actorB];
+      if (!snapshot) { gameInfo.innerHTML = `Game: <em>Not found</em>`; return; }
+      refreshStatusUI(snapshot);
+  
+      const players = snapshot.players || {};
+      const finishedPids = Object.keys(players).filter(pid => players[pid].finishedAt);
+      if (finishedPids.length >= 2 && !snapshot.winner) {
+        let winnerPid = finishedPids[0];
+        let minClicks = players[winnerPid].clicks || Infinity;
+        for (const pid of finishedPids) {
+          const c = Number(players[pid].clicks) || Infinity;
+          if (c < minClicks) { minClicks = c; winnerPid = pid; }
+        }
+        await dbPatch(`${gameId}`, { winner: winnerPid, winnerClicks: minClicks, status: "finished" });
+      }
     } catch (err) {
-      console.warn("Failed to fetch actorPair during click", err);
+      console.error("pollOnce error", err);
     }
   }
-
-  clicks = (Number(clicks) || 0) + 1;
-  try {
-    await storageSet({ clicks });
-    await dbPatch(`${gameId}/players/${playerId}`, { clicks });
-  } catch (err) {
-    console.error("Failed to persist click", err);
+  
+  function startPolling() {
+    if (pollingInterval) return;
+    pollOnce();
+    pollingInterval = setInterval(pollOnce, 1000);
   }
-
-  const targetUrl = actorPair?.[1]?.url;
-  if (targetUrl && href.startsWith(targetUrl)) {
+  function stopPolling() {
+    if (pollingInterval) { clearInterval(pollingInterval); pollingInterval = null; }
+  }
+  
+  
+  // ----------------------
+  // CLICK TRACKING (only actor page clicks)
+  document.addEventListener("click", async (event) => {
+    if (!gameId || !playerId) return;
+  
+    const a = event.target.closest("a");
+    if (!a) return;
+  
+    let href = a.getAttribute("href");
+    if (!href) return;
+  
+    if (href.startsWith("/")) href = "https://www.imdb.com" + href;
+    if (!href.startsWith("http")) return;
+  
+    // Only actor pages count (allow extra query params)
+    if (!/^https:\/\/www\.imdb\.com\/name\/nm\d+\/?/.test(href)) return;
+  
+    if (!actorPair) {
+      try {
+        const snapshot = await dbGet(`${gameId}`);
+        if (snapshot && snapshot.actorA && snapshot.actorB)
+          actorPair = [snapshot.actorA, snapshot.actorB];
+      } catch (err) {
+        console.warn("Failed to fetch actorPair during click", err);
+      }
+    }
+  
+    clicks = (Number(clicks) || 0) + 1;
     try {
-      await dbPatch(`${gameId}/players/${playerId}`, { finishedAt: Date.now() });
-      alert(`You reached ${actorPair[1].name} in ${clicks} clicks.`);
+      await storageSet({ clicks });
+      await dbPatch(`${gameId}/players/${playerId}`, { clicks });
     } catch (err) {
-      console.error("Failed to set finishedAt", err);
+      console.error("Failed to persist click", err);
     }
-  }
-});
-
-// ----------------------
-// UI button wiring
-startBtn.addEventListener("click", () => { joinRow.style.display = "none"; createGameAndStart(); });
-joinBtn.addEventListener("click", () => { joinRow.style.display = joinRow.style.display === "none" ? "block" : "none"; });
-joinSubmit.addEventListener("click", () => { joinGameWithId(joinInput.value); });
-leaveBtn.addEventListener("click", leaveGame);
-
-// ----------------------
-// Initial refresh / persisted state rehydration
-(async function initialRefresh() {
-  const stored = await storageGet(['playerId', 'gameId', 'actorPair', 'clicks']);
-  if (stored.playerId) playerId = stored.playerId;
-  if (stored.gameId) {
-    gameId = stored.gameId;
-    actorPair = stored.actorPair || null;
-    clicks = stored.clicks || 0;
-    startPolling();
-  }
-  refreshStatusUI();
-})();
+  
+    const targetUrl = actorPair?.[1]?.url;
+    if (targetUrl && href.startsWith(targetUrl)) {
+      try {
+        await dbPatch(`${gameId}/players/${playerId}`, { finishedAt: Date.now() });
+        alert(`You reached ${actorPair[1].name} in ${clicks} clicks.`);
+      } catch (err) {
+        console.error("Failed to set finishedAt", err);
+      }
+    }
+  });
+  
+  // ----------------------
+  // UI button wiring
+  startBtn.addEventListener("click", () => {
+    joinRow.style.display = "none";
+    createGameAndStart();
+    updateGameControls(); // <-- ADDED
+  });
+  
+  joinBtn.addEventListener("click", () => {
+    joinRow.style.display =
+      joinRow.style.display === "none" ? "block" : "none";
+  });
+  
+  joinSubmit.addEventListener("click", () => {
+    joinGameWithId(joinInput.value);
+    updateGameControls(); // <-- ADDED
+  });
+  
+  leaveBtn.addEventListener("click", () => {
+    leaveGame();
+    updateGameControls(); // <-- ADDED
+  });
+  
+  // ----------------------
+  // Initial refresh / persisted state rehydration
+  (async function initialRefresh() {
+    const stored = await storageGet(['playerId', 'gameId', 'actorPair', 'clicks']);
+    if (stored.playerId) playerId = stored.playerId;
+    if (stored.gameId) {
+      gameId = stored.gameId;
+      actorPair = stored.actorPair || null;
+      clicks = stored.clicks || 0;
+      startPolling();
+    }
+  
+    refreshStatusUI();
+    updateGameControls(); // <-- ADDED
+  })();
+  
