@@ -803,12 +803,12 @@ async function joinGameWithId(inputId) {
 async function giveUpGame() {
     if (!gameId || !confirm("Are you sure you want to give up? You will be excluded from winning.")) return;
     
-    stopPolling(); // Stop polling immediately for the player giving up
+    // mark local finished flag so clicks are blocked, but keep polling running so player will see the final winner screen
     finished = true;
     await storageSet({ finished });
 
     try {
-        // 1. Set the gaveUp flag for the current player
+        // 1. Set the gaveUp flag for the current player (don't set finishedAt)
         await dbPatch(`${gameId}/players/${playerId}`, { gaveUp: true, finishedAt: null, name: displayName });
         
         // 2. Fetch the updated game state
@@ -914,10 +914,13 @@ async function pollOnce() {
     const playerIds = Object.keys(players);
     const currentPlayer = players[playerId];
     
-    // If the current player has given up, stop polling for them, but let the game continue
+    // If the current player has given up, mark local finished but keep polling so they receive final winner screen
     if (currentPlayer && currentPlayer.gaveUp) {
-        stopPolling();
-        return;
+        if (!finished) {
+           finished = true;
+           await storageSet({ finished });
+        }
+        // continue polling to pick up end-of-game updates
     }
 
     // If startedAt is set and we haven't redirected yet, redirect only participants to actorA
@@ -929,8 +932,11 @@ async function pollOnce() {
 
       // Determine participant membership:
       // - Prefer explicit participants list (snapshot.participants)
+      // - Also accept snapshot.players[playerId].ready (covers race where per-player resets haven't landed yet)
       // - Fallback to considering all non-gaveUp players as participants for backwards compatibility
+      const playerReadyFlag = snapshot.players && snapshot.players[playerId] && snapshot.players[playerId].ready;
       const amParticipant = (snapshot.participants && snapshot.participants[playerId]) ||
+                            playerReadyFlag ||
                             (!snapshot.participants && currentPlayer && !currentPlayer.gaveUp);
 
       if (amParticipant) {
