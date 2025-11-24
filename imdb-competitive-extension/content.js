@@ -133,6 +133,8 @@ let displayName = null;
 let role = null; // 'host' | 'guest' | null
 let hasRedirected = false; // Now persistent via storage
 let finished = false; // local session flag to block further clicks after finishing
+let roundStartedAt = null; // preserved across finished state (stored locally) so winners board can compute durations
+let lastReadyAt = null; // timestamp when user clicked Play Again (local helper to handle races)
 
 // ----------------------
 // UI overlay (reworked: includes name input + players list)
@@ -167,6 +169,35 @@ gameInfo.style.marginBottom = "8px";
 gameInfo.innerHTML = "Game: <em>Not in a game</em>";
 uiBox.appendChild(gameInfo);
 
+// Name input
+const nameRow = document.createElement("div");
+nameRow.style.display = "flex";
+nameRow.style.alignItems = "center";
+nameRow.style.gap = "6px";
+nameRow.style.marginTop = "8px";
+uiBox.appendChild(nameRow);
+
+const nameInput = document.createElement("input");
+nameInput.placeholder = "Display name (you)";
+Object.assign(nameInput.style, { padding: "6px", flex: "1" });
+nameRow.appendChild(nameInput);
+
+const nameSaveBtn = document.createElement("button");
+nameSaveBtn.textContent = "Save";
+Object.assign(nameSaveBtn.style, { padding: "6px 8px", borderRadius: "6px", background: "#333", color: "#fff", border: "none", cursor: "pointer" });
+nameRow.appendChild(nameSaveBtn);
+
+// Global round timer (moved below nameRow and above players lobby list, left aligned)
+const roundTimerDiv = document.createElement("div");
+Object.assign(roundTimerDiv.style, {
+  fontSize: "16px",
+  fontWeight: "700",
+  margin: "8px 0",
+  display: "none",
+  textAlign: "left",
+  width: "100%"
+});
+
 // --- WINNER MESSAGE CONTAINER ---
 const winnerBox = document.createElement("div");
 Object.assign(winnerBox.style, {
@@ -197,7 +228,7 @@ winnerBox.appendChild(winnerTextContainer);
 const winnerText = document.createElement("div");
 Object.assign(winnerText.style, {
   fontWeight: "bold",
-  fontSize: "1.4em", 
+  fontSize: "1.4em",
   marginBottom: "8px",
   textShadow: "1px 1px 2px #000"
 });
@@ -210,8 +241,8 @@ Object.assign(leaderboardList.style, {
     fontWeight: "normal",
     display: "flex",
     flexDirection: "column",
-    gap: "4px",
-    maxWidth: "80%",
+    gap: "6px",
+    maxWidth: "90%",
     margin: "0 auto"
 });
 winnerTextContainer.appendChild(leaderboardList);
@@ -221,12 +252,12 @@ winnerTextContainer.appendChild(leaderboardList);
 const playAgainBtn = document.createElement("button");
 playAgainBtn.textContent = "Play Again";
 // Make the whole visible button area clickable: full-width, block, comfortable padding
-Object.assign(playAgainBtn.style, { 
-    padding: "12px 14px", 
-    borderRadius: "6px", 
-    background: "#f5c518", 
-    color: "#000", 
-    border: "2px solid #000", 
+Object.assign(playAgainBtn.style, {
+    padding: "12px 14px",
+    borderRadius: "6px",
+    background: "#f5c518",
+    color: "#000",
+    border: "2px solid #000",
     fontWeight: "bold",
     cursor: "pointer",
     display: "block",
@@ -234,10 +265,8 @@ Object.assign(playAgainBtn.style, {
     boxSizing: "border-box",
     marginTop: "8px",
     textAlign: "center",
-    // increase tap target on touch devices
     touchAction: "manipulation"
 });
-// ensure button receives pointer events if something is overlaid; give it high z-index
 playAgainBtn.style.zIndex = "1000001";
 playAgainBtn.style.pointerEvents = "auto";
 winnerBox.appendChild(playAgainBtn);
@@ -268,14 +297,14 @@ uiBox.appendChild(actionRow);
 // Give Up Button (New)
 const giveUpBtn = document.createElement("button");
 giveUpBtn.textContent = "Give Up";
-Object.assign(giveUpBtn.style, { 
-    padding: "6px 8px", 
-    marginRight: "6px", 
-    borderRadius: "6px", 
-    background: "#ff6347", 
-    color: "#fff", 
-    border: "none", 
-    cursor: "pointer" 
+Object.assign(giveUpBtn.style, {
+    padding: "6px 8px",
+    marginRight: "6px",
+    borderRadius: "6px",
+    background: "#ff6347",
+    color: "#fff",
+    border: "none",
+    cursor: "pointer"
 });
 actionRow.appendChild(giveUpBtn);
 
@@ -283,15 +312,14 @@ actionRow.appendChild(giveUpBtn);
 const copybtn = document.createElement("button");
 copybtn.textContent = "Copy Code";
 copybtn.id = 'copybtn';
-Object.assign(copybtn.style, { 
-    padding: "6px 8px", 
-    
-    marginRight: "6px", 
-    borderRadius: "6px", 
-    background: "#c4341bff", 
-    color: "#fff", 
-    border: "none", 
-    cursor: "pointer" 
+Object.assign(copybtn.style, {
+    padding: "6px 8px",
+    marginRight: "6px",
+    borderRadius: "6px",
+    background: "#c4341bff",
+    color: "#fff",
+    border: "none",
+    cursor: "pointer"
 });
 actionRow.appendChild(copybtn);
 
@@ -347,7 +375,7 @@ Object.assign(startRoundBtn.style, {
   color: "#fff",
   border: "none",
   cursor: "pointer",
-  display: "none" // shown only to host in lobby
+  display: "none"
 });
 actionRow.appendChild(startRoundBtn);
 
@@ -363,33 +391,15 @@ startRoundBtn.addEventListener("click", async () => {
 
 const leaveBtn = document.createElement("button");
 leaveBtn.textContent = "Leave Game";
-Object.assign(leaveBtn.style, { 
-    padding: "6px 8px", 
-    borderRadius: "6px", 
-    background: "#b22222", 
-    color: "#fff", 
-    border: "none", 
-    cursor: "pointer" 
+Object.assign(leaveBtn.style, {
+    padding: "6px 8px",
+    borderRadius: "6px",
+    background: "#b22222",
+    color: "#fff",
+    border: "none",
+    cursor: "pointer"
 });
 actionRow.appendChild(leaveBtn);
-
-// Name input
-const nameRow = document.createElement("div");
-nameRow.style.display = "flex";
-nameRow.style.alignItems = "center";
-nameRow.style.gap = "6px";
-nameRow.style.marginTop = "8px";
-uiBox.appendChild(nameRow);
-
-const nameInput = document.createElement("input");
-nameInput.placeholder = "Display name (you)";
-Object.assign(nameInput.style, { padding: "6px", flex: "1" });
-nameRow.appendChild(nameInput);
-
-const nameSaveBtn = document.createElement("button");
-nameSaveBtn.textContent = "Save";
-Object.assign(nameSaveBtn.style, { padding: "6px 8px", borderRadius: "6px", background: "#333", color: "#fff", border: "none", cursor: "pointer" });
-nameRow.appendChild(nameSaveBtn);
 
 // players list (lobby)
 const lobbyBox = document.createElement("div");
@@ -410,6 +420,9 @@ lobbyBox.appendChild(lobbyTitle);
 const playersList = document.createElement("div");
 playersList.style.minHeight = "26px";
 lobbyBox.appendChild(playersList);
+
+// Insert the round timer below the nameRow and above lobbyBox
+nameRow.after(roundTimerDiv);
 
 // join controls (enter game id)
 const joinRow = document.createElement("div");
@@ -445,7 +458,7 @@ uiBox.appendChild(hintDiv);
 // Initialization
 (async function init() {
   try {
-    const stored = await storageGet(['playerId', 'gameId', 'actorPair', 'clicks', 'displayName', 'role', 'hasRedirected', 'finished']);
+    const stored = await storageGet(['playerId', 'gameId', 'actorPair', 'clicks', 'displayName', 'role', 'hasRedirected', 'finished', 'roundStartedAt', 'lastReadyAt']);
     if (stored.playerId) playerId = stored.playerId;
     else {
       playerId = randId(6);
@@ -456,8 +469,10 @@ uiBox.appendChild(hintDiv);
     nameInput.value = displayName;
 
     if (stored.role) role = stored.role;
-    if (stored.hasRedirected) hasRedirected = stored.hasRedirected; 
+    if (stored.hasRedirected) hasRedirected = stored.hasRedirected;
     if (stored.finished) finished = stored.finished;
+    if (stored.roundStartedAt) roundStartedAt = stored.roundStartedAt;
+    if (stored.lastReadyAt) lastReadyAt = stored.lastReadyAt;
 
     if (stored.gameId) {
       gameId = stored.gameId;
@@ -467,7 +482,7 @@ uiBox.appendChild(hintDiv);
     }
     refreshStatusUI();
     updateGameControls();
-    console.log("IMDB Click Race initialized, playerId:", playerId, "name:", displayName, "redirected:", hasRedirected, "finished:", finished);
+    console.log("IMDB Click Race initialized, playerId:", playerId, "name:", displayName, "redirected:", hasRedirected, "finished:", finished, "roundStartedAt:", roundStartedAt, "lastReadyAt:", lastReadyAt);
   } catch (err) {
     console.error("Init error", err);
   }
@@ -475,6 +490,14 @@ uiBox.appendChild(hintDiv);
 
 // ----------------------
 // UI helpers
+function formatDuration(ms) {
+  if (typeof ms !== 'number' || isNaN(ms)) return "";
+  const totalSec = Math.floor(ms / 1000);
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
 function refreshStatusUI(snapshotGame) {
   if (snapshotGame) {
     gameInfo.innerHTML = `Game: <strong>${gameId}</strong><br>Target: ${snapshotGame.actorA ? snapshotGame.actorA.name : 'TBD'} → ${snapshotGame.actorB ? snapshotGame.actorB.name : 'TBD'}`;
@@ -488,6 +511,40 @@ function refreshStatusUI(snapshotGame) {
     }
   }
 
+  // ROUND TIMER: show if round active
+  if (snapshotGame && snapshotGame.startedAt && snapshotGame.status === 'active') {
+    // Use server start time as canonical
+    roundStartedAt = snapshotGame.startedAt;
+    storageSet({ roundStartedAt }).catch(() => {});
+    roundTimerDiv.style.display = 'block';
+    const elapsed = Date.now() - roundStartedAt;
+    roundTimerDiv.textContent = `Time: ${formatDuration(elapsed)}`;
+  } else if (snapshotGame && snapshotGame.status === 'finished') {
+    // keep roundStartedAt (preserved) so winners board can compute durations;
+    if (roundStartedAt) {
+      roundTimerDiv.style.display = 'block';
+      // show final total if winner present
+      if (snapshotGame.winner) {
+        const elapsed = Date.now() - roundStartedAt;
+        roundTimerDiv.textContent = `Time: ${formatDuration(elapsed)}`;
+      } else {
+        roundTimerDiv.style.display = 'none';
+      }
+    } else {
+      roundTimerDiv.style.display = 'none';
+    }
+  } else {
+    // lobby or no active round: hide timer and clear preserved start when in lobby
+    if (snapshotGame && snapshotGame.status === 'lobby') {
+      roundStartedAt = null;
+      storageSet({ roundStartedAt: null }).catch(() => {});
+      // also clear local lastReadyAt on lobby entry to avoid stale readyness
+      lastReadyAt = null;
+      storageSet({ lastReadyAt: null }).catch(() => {});
+    }
+    roundTimerDiv.style.display = 'none';
+  }
+
   // If the game is in lobby mode, reset redirect flag so participants will redirect on the next start
   if (snapshotGame && snapshotGame.status === 'lobby') {
     hasRedirected = false;
@@ -497,92 +554,111 @@ function refreshStatusUI(snapshotGame) {
   // --- WINNER LOGIC FOR UI ---
   if (snapshotGame && snapshotGame.winner && snapshotGame.winnerClicks) {
     const players = snapshotGame.players || {};
-    
+
     // 1. Separate players into two groups
     const allPlayers = Object.keys(players).map(pid => ({ pid, ...players[pid] }));
 
     const finishedPlayers = allPlayers
-      .filter(p => p.finishedAt && !p.gaveUp) // Only count finishers who didn't give up
+      .filter(p => p.finishedAt && !p.gaveUp)
       .sort((a, b) => (a.clicks || Infinity) - (b.clicks || Infinity));
-      
+
     const gaveUpPlayers = allPlayers
-      .filter(p => p.gaveUp); // These players have no score, so no need to sort
+      .filter(p => p.gaveUp);
 
     leaderboardList.innerHTML = '';
-    
+
     if (finishedPlayers.length > 0) {
         // Display 1st Place (The Winner)
         const winner = finishedPlayers[0];
         const winnerName = winner.name || winner.pid;
-        winnerText.innerHTML = `🏁 ${winnerName} WINS! 🏆`;
-        
+        const baseStart = snapshotGame.startedAt || roundStartedAt;
+        const winnerTime = (winner.finishedAt && baseStart) ? formatDuration(winner.finishedAt - baseStart) : "";
+        winnerText.innerHTML = `🏁 ${winnerName} WINS! 🏆 ${winnerTime ? `— ${winnerTime}` : ''}`;
+
         // Display the rest of the finished leaderboard
         finishedPlayers.forEach((player, index) => {
             const rank = index + 1;
             const playerName = player.name || player.pid;
             const clicks = player.clicks;
-            
+            const base = snapshotGame.startedAt || roundStartedAt;
+            const playerTime = (player.finishedAt && base) ? formatDuration(player.finishedAt - base) : '';
+
             const listItem = document.createElement('div');
+            listItem.style.display = 'flex';
+            listItem.style.justifyContent = 'space-between';
+            listItem.style.alignItems = 'center';
+            listItem.style.gap = '8px';
+            listItem.style.width = '100%';
+
+            const left = document.createElement('div');
             // Use correct ordinal suffix
             const suffix = rank === 1 ? 'st' : (rank === 2 ? 'nd' : (rank === 3 ? 'rd' : 'th'));
-            
-            listItem.innerHTML = `${rank}${suffix} Place: ${playerName} (${clicks} clicks)`;
-            listItem.style.textAlign = 'center';
-            
+            left.innerHTML = `${rank}${suffix} Place: <strong>${playerName}</strong> (${clicks} clicks)`;
+            left.style.textAlign = 'left';
+            left.style.flex = '1';
+
+            const timeDiv = document.createElement('div');
+            timeDiv.textContent = playerTime ? playerTime : '';
+            timeDiv.style.minWidth = '56px';
+            timeDiv.style.textAlign = 'right';
+            timeDiv.style.opacity = player.pid === playerId ? '1' : '0.95';
+
+            listItem.appendChild(left);
+            listItem.appendChild(timeDiv);
+
             // Highlight the current player if they finished
             if (player.pid === playerId) {
-                 listItem.style.fontWeight = 'bold';
-                 listItem.style.color = '#fff';
+                 left.style.fontWeight = '700';
+                 left.style.color = '#fff';
             }
-            
+
             leaderboardList.appendChild(listItem);
         });
-        
+
     } else {
         // This handles cases where a game ends but nobody actually finished (e.g. everyone gave up)
         winnerText.innerHTML = `Game Ended`;
         leaderboardList.innerHTML = 'No finishers recorded.';
     }
-    
+
     // 2. Append Gave Up players at the bottom
     if (gaveUpPlayers.length > 0) {
         const divider = document.createElement('div');
         divider.style.borderTop = '1px dashed rgba(245, 197, 24, 0.4)';
         divider.style.margin = '8px 0';
         leaderboardList.appendChild(divider);
-        
+
         const gaveUpHeader = document.createElement('div');
         gaveUpHeader.textContent = 'Non-Finishers:';
         gaveUpHeader.style.fontWeight = 'bold';
         gaveUpHeader.style.marginTop = '4px';
         leaderboardList.appendChild(gaveUpHeader);
-        
+
         gaveUpPlayers.forEach(player => {
             const playerName = player.name || player.pid;
             const listItem = document.createElement('div');
             listItem.innerHTML = `${playerName} — Gave Up 🏳️`;
             listItem.style.textAlign = 'center';
             listItem.style.opacity = '0.8';
-            
+
             if (player.pid === playerId) {
                  listItem.style.fontWeight = 'bold';
                  listItem.style.color = '#fff';
                  listItem.style.opacity = '1';
             }
-            
+
             leaderboardList.appendChild(listItem);
         });
     }
 
-
     winnerBox.style.display = "flex"; // Show the overlay
-    
+
     // Hide standard lobby/controls
     lobbyBox.style.display = "none";
     btnRow.style.display = "none";
     nameRow.style.display = "none";
     actionRow.style.display = "none";
-    
+
   } else {
     // Hide winner box if no winner or game is not finished
     winnerBox.style.display = "none";
@@ -591,7 +667,7 @@ function refreshStatusUI(snapshotGame) {
         lobbyBox.style.display = "block";
         btnRow.style.display = "block";
         nameRow.style.display = "flex";
-        
+
         // Only show Give Up if the game is started and current player hasn't finished/given up
         const isStarted = snapshotGame && snapshotGame.startedAt;
         const currentPlayer = snapshotGame?.players?.[playerId];
@@ -599,7 +675,7 @@ function refreshStatusUI(snapshotGame) {
 
         actionRow.style.display = "block";
         giveUpBtn.style.display = canGiveUp ? "inline-block" : "none";
-        
+
     } else {
         actionRow.style.display = "none";
     }
@@ -622,14 +698,14 @@ function renderPlayersList(playersObj) {
     playersList.textContent = "No players yet.";
     return;
   }
-  
+
   const allPlayers = Object.keys(playersObj).map(pid => ({ pid, ...playersObj[pid] }));
 
   // 1. Sort Finished players by clicks
   const finishedPlayers = allPlayers
-    .filter(p => p.finishedAt && !p.gaveUp) // Only count finishers who didn't give up
+    .filter(p => p.finishedAt && !p.gaveUp)
     .sort((a, b) => (a.clicks || Infinity) - (b.clicks || Infinity));
-    
+
   // 2. Collect Active players (not finished and not given up)
   const activePlayers = allPlayers
     .filter(p => !p.finishedAt && !p.gaveUp);
@@ -646,10 +722,12 @@ function renderPlayersList(playersObj) {
     row.style.padding = "4px 0";
     row.style.fontSize = "13px";
     const label = p.pid === playerId ? `${p.name || p.pid} (You)` : (p.name || p.pid);
-    
+
     let statusLabel = "";
     if (p.finishedAt) {
-      statusLabel = ` — ${p.clicks} clicks ✅ finished`;
+      const base = roundStartedAt;
+      const dur = (base && p.finishedAt) ? formatDuration(p.finishedAt - base) : '';
+      statusLabel = ` — ${p.clicks} clicks ✅ finished${dur ? ` — ${dur}` : ''}`;
     } else if (p.gaveUp) {
       statusLabel = " — GAVE UP 🏳️";
       row.style.opacity = '0.6';
@@ -669,16 +747,15 @@ function updateGameControls() {
   const inGame = !!gameId;
   startBtn.style.display = inGame ? "none" : "inline-block";
   joinBtn.style.display = inGame ? "none" : "inline-block";
-  joinRow.style.display = inGame ? "none" : "none"; // joinRow toggled by clicking Join button
-  // leave/give up logic is now handled in refreshStatusUI based on game state
-  actionRow.style.display = inGame ? "block" : "none"; 
+  joinRow.style.display = inGame ? "none" : "none";
+  actionRow.style.display = inGame ? "block" : "none";
   lobbyBox.style.display = inGame ? "block" : "none";
-  
+
   if (!inGame) {
      winnerBox.style.display = "none";
      btnRow.style.display = "block";
      nameRow.style.display = "flex";
-     lobbyBox.style.display = "none"; // Hide lobby box when no game is active
+     lobbyBox.style.display = "none";
   }
 }
 
@@ -702,8 +779,7 @@ async function startRound() {
 
   // Decide participants:
   // - If 2+ explicit ready -> use explicitReady
-  // - Else if explicitReady is <2 -> fall back to including allNonGaveUp (so guests are included by default)
-  // - Allow host solo only if only one joined player exists and it's the host
+  // - Else if explicitReady is <2 -> fall back to including allNonGaveUp
   let readyPids = explicitReady.length >= 2 ? explicitReady : allNonGaveUp;
 
   // If still <2, allow host solo if they're the only joined player
@@ -718,8 +794,22 @@ async function startRound() {
   const shuffled = [...actorList].sort(() => Math.random() - 0.5);
   const newActorPair = [shuffled[0], shuffled[1]];
 
-  // Build participants map
+  // Build participants map.
+  // NEW: include optimistic participants that guests may have written (snapshot.participants)
   const participants = {};
+  const existingParticipants = snapshot.participants || {};
+
+  // Start with existing participants (but only include players that are not marked gaveUp on server to be safe)
+  Object.keys(existingParticipants).forEach(pid => {
+    if (existingParticipants[pid]) {
+      // ensure the player still exists and hasn't gaveUp (defensive)
+      if (!players[pid] || !players[pid].gaveUp) {
+        participants[pid] = true;
+      }
+    }
+  });
+
+  // Ensure readyPids are included (this will also add the host and others)
   readyPids.forEach(pid => { participants[pid] = true; });
 
   // Patch game root with new round metadata, clear previous startedAt/winner etc
@@ -733,22 +823,21 @@ async function startRound() {
     participants
   });
 
-  // Reset each participant's player record (clicks, finishedAt, gaveUp, ready=false)
-  const resets = readyPids.map(pid => {
+  // Reset each participant's player record (clicks, finishedAt, gaveUp=false, ready=false)
+  const resets = Object.keys(participants).map(pid => {
     return dbPatch(`${gameId}/players/${pid}`, { clicks: 0, finishedAt: null, gaveUp: false, ready: false });
   });
 
   // Wait for all resets to finish
   await Promise.all(resets);
 
-  console.log("Started new round with participants:", readyPids);
+  console.log("Started new round with participants:", Object.keys(participants));
 }
 
 async function createGameAndStart() {
   const id = randId(5);
   gameId = id;
 
-  // choose pair at startRound time
   actorPair = null;
   clicks = 0;
   finished = false;
@@ -893,13 +982,14 @@ async function leaveGame(shouldRestart = false) {
   
   // Clear local state and storage
   stopPolling();
-  await storageRemove(['gameId', 'actorPair', 'clicks', 'role', 'hasRedirected', 'finished']); 
+  await storageRemove(['gameId', 'actorPair', 'clicks', 'role', 'hasRedirected', 'finished', 'lastReadyAt']); 
   gameId = null;
   actorPair = null;
   clicks = 0;
   role = null;
   hasRedirected = false;
   finished = false;
+  lastReadyAt = null;
   
   // Re-run UI update
   refreshStatusUI();
@@ -942,34 +1032,27 @@ async function pollOnce() {
       }
 
       // Determine participant membership:
-      // - If the host explicitly included this player in snapshot.participants -> treat them as participant ALWAYS
-      // - Otherwise accept snapshot.players[playerId].ready (covers race where per-player resets haven't landed yet)
-      // - Fallback to old behavior: when there's no participants map, consider non-gaveUp players participants
+      // - explicit participants map from host
+      // - server ready flag
+      // - fallback: server record non-gaveUp if there's no participants map
+      // - optimistic local signal lastReadyAt within 5s of startedAt
       const serverPlayerRec = snapshot.players && snapshot.players[playerId] ? snapshot.players[playerId] : null;
       const playerReadyFlag = !!(serverPlayerRec && serverPlayerRec.ready);
       const playerGaveUpFlag = !!(serverPlayerRec && serverPlayerRec.gaveUp);
-
-      // New: prefer the explicit participants map from the host and ignore gaveUp when host explicitly included the player
       const explicitlyIncluded = !!(snapshot.participants && snapshot.participants[playerId]);
+
+      const recentReadyRace = lastReadyAt && snapshot.startedAt && Math.abs(snapshot.startedAt - lastReadyAt) < 5000;
 
       const amParticipant = explicitlyIncluded ||
                             playerReadyFlag ||
-                            (!snapshot.participants && serverPlayerRec && !playerGaveUpFlag);
+                            (!snapshot.participants && serverPlayerRec && !playerGaveUpFlag) ||
+                            recentReadyRace;
 
       if (amParticipant) {
-        // If the host explicitly included us, clear any stale local gave-up/finished state so redirect happens reliably.
-        // This is defensive for races where local storage still marked 'finished' or 'gaveUp' after clicking Give Up earlier.
-        if (explicitlyIncluded) {
-          finished = false;
-          hasRedirected = false;
-          await storageSet({ finished, hasRedirected });
-        } else {
-          // For other cases, also ensure we clear finished so UI/redirect flow is fresh
-          clicks = 0;
-          finished = false;
-          hasRedirected = false;
-          await storageSet({ clicks, finished, hasRedirected, gameId });
-        }
+        // Clear local stale finished/hasRedirected flags for reliable redirect
+        finished = false;
+        hasRedirected = false;
+        await storageSet({ finished, hasRedirected });
 
         await sleep(150);
         if (actorPair && actorPair[0] && actorPair[0].url) {
@@ -1170,10 +1253,15 @@ async function handlePlayAgainClick() {
     clicks = 0;
     finished = false;
     hasRedirected = false;
-    await storageSet({ clicks, finished, hasRedirected });
+    lastReadyAt = Date.now();
+    await storageSet({ clicks, finished, hasRedirected, lastReadyAt });
 
     // Mark this player ready for the next round (don't leave the game)
     await dbPatch(`${gameId}/players/${playerId}`, { ready: true, gaveUp: false, finishedAt: null, clicks: 0, name: displayName });
+
+    // Also write an optimistic participants entry so the host's startRound can pick this guest up
+    // (this is harmless if the host later overwrites participants)
+    await dbPatch(`${gameId}/participants/${playerId}`, true);
 
     // Move the game into lobby mode so host can start the next round; clear previous winner/startedAt/participants
     await dbPatch(`${gameId}`, { status: 'lobby', winner: null, winnerClicks: null, startedAt: null, participants: null });
@@ -1216,7 +1304,7 @@ winnerBox.addEventListener('click', (e) => {
 // ----------------------
 // Initial rehydration
 (async function initialRefresh() {
-  const stored = await storageGet(['playerId', 'gameId', 'actorPair', 'clicks', 'displayName', 'role', 'hasRedirected', 'finished']);
+  const stored = await storageGet(['playerId', 'gameId', 'actorPair', 'clicks', 'displayName', 'role', 'hasRedirected', 'finished', 'roundStartedAt', 'lastReadyAt']);
   if (stored.playerId) playerId = stored.playerId;
   if (stored.displayName) {
     displayName = stored.displayName;
@@ -1225,6 +1313,8 @@ winnerBox.addEventListener('click', (e) => {
   if (stored.role) role = stored.role;
   if (stored.hasRedirected) hasRedirected = stored.hasRedirected; 
   if (stored.finished) finished = stored.finished;
+  if (stored.roundStartedAt) roundStartedAt = stored.roundStartedAt;
+  if (stored.lastReadyAt) lastReadyAt = stored.lastReadyAt;
 
   if (stored.gameId) {
     gameId = stored.gameId;
