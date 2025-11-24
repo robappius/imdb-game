@@ -325,6 +325,31 @@ function showCopyNotice(text) {
   }, 2000);
 }
 
+// START ROUND button (host-only)
+const startRoundBtn = document.createElement("button");
+startRoundBtn.textContent = "Start Round";
+Object.assign(startRoundBtn.style, {
+  padding: "6px 8px",
+  marginRight: "6px",
+  borderRadius: "6px",
+  background: "#004d00",
+  color: "#fff",
+  border: "none",
+  cursor: "pointer",
+  display: "none" // shown only to host in lobby
+});
+actionRow.appendChild(startRoundBtn);
+
+startRoundBtn.addEventListener("click", async () => {
+  if (!gameId) { alert("No active game"); return; }
+  try {
+    await startRound();
+  } catch (err) {
+    console.error("startRound failed", err);
+    alert("Failed to start round.");
+  }
+});
+
 const leaveBtn = document.createElement("button");
 leaveBtn.textContent = "Leave Game";
 Object.assign(leaveBtn.style, { 
@@ -402,7 +427,7 @@ const hintDiv = document.createElement("div");
 hintDiv.style.fontSize = "11px";
 hintDiv.style.opacity = "0";
 hintDiv.style.marginTop = "8px";
-hintDiv.innerHTML = "Create a game to generate an ID and enter the lobby. When 2 players are present the game will start automatically.";
+hintDiv.innerHTML = "Create a game to generate an ID and enter the lobby. When 2 players are present the host can start the round.";
 uiBox.appendChild(hintDiv);
 
 // ----------------------
@@ -441,8 +466,8 @@ uiBox.appendChild(hintDiv);
 // UI helpers
 function refreshStatusUI(snapshotGame) {
   if (snapshotGame) {
-    gameInfo.innerHTML = `Game: <strong>${gameId}</strong><br>Target: ${snapshotGame.actorA.name} → ${snapshotGame.actorB.name}`;
-    actorPair = [snapshotGame.actorA, snapshotGame.actorB];
+    gameInfo.innerHTML = `Game: <strong>${gameId}</strong><br>Target: ${snapshotGame.actorA ? snapshotGame.actorA.name : 'TBD'} → ${snapshotGame.actorB ? snapshotGame.actorB.name : 'TBD'}`;
+    actorPair = snapshotGame.actorA && snapshotGame.actorB ? [snapshotGame.actorA, snapshotGame.actorB] : actorPair;
     storageSet({ actorPair }).catch(() => {});
   } else {
     if (gameId && actorPair) {
@@ -450,6 +475,12 @@ function refreshStatusUI(snapshotGame) {
     } else {
       gameInfo.innerHTML = "Game: <em>Not in a game</em>";
     }
+  }
+
+  // If the game is in lobby mode, reset redirect flag so participants will redirect on the next start
+  if (snapshotGame && snapshotGame.status === 'lobby') {
+    hasRedirected = false;
+    storageSet({ hasRedirected }).catch(() => {});
   }
 
   // --- WINNER LOGIC FOR UI ---
@@ -563,6 +594,13 @@ function refreshStatusUI(snapshotGame) {
     }
   }
 
+  // Show host Start Round button if in lobby
+  if (snapshotGame && snapshotGame.status === 'lobby' && role === 'host') {
+    startRoundBtn.style.display = 'inline-block';
+  } else {
+    startRoundBtn.style.display = 'none';
+  }
+
   let text = `Player ID: ${playerId}\nName: ${displayName}\nClicks: ${clicks}\n\n`;
   statusDiv.textContent = text;
 }
@@ -604,6 +642,9 @@ function renderPlayersList(playersObj) {
     } else if (p.gaveUp) {
       statusLabel = " — GAVE UP 🏳️";
       row.style.opacity = '0.6';
+    } else if (p.ready) {
+      statusLabel = " — READY ⏱️";
+      row.style.fontWeight = '600';
     } else if (typeof p.clicks !== 'undefined') {
       statusLabel = ` — ${p.clicks} clicks`;
     }
@@ -633,29 +674,87 @@ function updateGameControls() {
 // ----------------------
 // Game operations
 
+// Host action: start a new round using players who are ready or all players that are joined (non-gaveUp)
+async function startRound() {
+  if (!gameId) throw new Error("No gameId");
+  // Fetch latest snapshot to avoid races
+  const snapshot = await dbGet(`${gameId}`);
+  if (!snapshot) throw new Error("Game not found");
+
+  const players = snapshot.players || {};
+
+  // explicit ready flags
+  const explicitReady = Object.keys(players).filter(pid => players[pid] && players[pid].ready);
+
+  // all non-gaveUp players (joined)
+  const allNonGaveUp = Object.keys(players).filter(pid => players[pid] && !players[pid].gaveUp);
+
+  // Decide participants:
+  // - If 2+ explicit ready -> use explicitReady
+  // - Else if explicitReady is <2 -> fall back to including allNonGaveUp (so guests are included by default)
+  // - Allow host solo only if only one joined player exists and it's the host
+  let readyPids = explicitReady.length >= 2 ? explicitReady : allNonGaveUp;
+
+  // If still <2, allow host solo if they're the only joined player
+  const hostSoloAllowed = (readyPids.length === 1 && readyPids[0] === playerId && role === 'host');
+
+  if (readyPids.length < 2 && !hostSoloAllowed) {
+    alert("Need at least 2 participants to start a round (or host can start solo if alone).");
+    return;
+  }
+
+  // choose new actors
+  const shuffled = [...actorList].sort(() => Math.random() - 0.5);
+  const newActorPair = [shuffled[0], shuffled[1]];
+
+  // Build participants map
+  const participants = {};
+  readyPids.forEach(pid => { participants[pid] = true; });
+
+  // Patch game root with new round metadata, clear previous startedAt/winner etc
+  await dbPatch(`${gameId}`, {
+    actorA: newActorPair[0],
+    actorB: newActorPair[1],
+    startedAt: Date.now(),
+    status: "active",
+    winner: null,
+    winnerClicks: null,
+    participants
+  });
+
+  // Reset each participant's player record (clicks, finishedAt, gaveUp, ready=false)
+  const resets = readyPids.map(pid => {
+    return dbPatch(`${gameId}/players/${pid}`, { clicks: 0, finishedAt: null, gaveUp: false, ready: false });
+  });
+
+  // Wait for all resets to finish
+  await Promise.all(resets);
+
+  console.log("Started new round with participants:", readyPids);
+}
+
 async function createGameAndStart() {
   const id = randId(5);
   gameId = id;
 
-  const shuffled = [...actorList].sort(() => Math.random() - 0.5);
-  actorPair = [shuffled[0], shuffled[1]];
+  // choose pair at startRound time
+  actorPair = null;
   clicks = 0;
   finished = false;
 
   const now = Date.now();
   const gameObj = {
-    actorA: actorPair[0],
-    actorB: actorPair[1],
-    players: { [playerId]: { clicks: 0, name: displayName, gaveUp: false } },
-    status: "active",
+    actorA: null,
+    actorB: null,
+    players: { [playerId]: { clicks: 0, name: displayName, gaveUp: false, ready: true } }, // host ready by default so they can start solo
+    status: "lobby",
     winner: null,
     winnerClicks: null,
-    createdAt: now,
-    startedAt: now
+    createdAt: now
   };
 
   try {
-    // create game and mark as started immediately
+    // create lobby (not started)
     await dbPut(`${gameId}`, gameObj);
     await storageSet({ gameId, actorPair, clicks, finished });
     role = 'host';
@@ -664,12 +763,7 @@ async function createGameAndStart() {
     updateGameControls();
     startPolling();
 
-    // redirect host immediately to actorA
-    if (actorPair && actorPair[0] && actorPair[0].url) {
-      hasRedirected = true;
-      await storageSet({ hasRedirected }); 
-      window.location.href = actorPair[0].url;
-    }
+    // NOTE: do not redirect here — host will click Start Round when ready
   } catch (err) {
     console.error("createGameAndStart failed", err);
     alert("Failed to create game. Check DB URL / rules.");
@@ -689,8 +783,8 @@ async function joinGameWithId(inputId) {
     clicks = 0;
     finished = false;
 
-    // add self to players
-    await dbPatch(`${gameId}/players/${playerId}`, { clicks: 0, name: displayName, gaveUp: false });
+    // add self to players (don't auto-ready)
+    await dbPatch(`${gameId}/players/${playerId}`, { clicks: 0, name: displayName, gaveUp: false, ready: false });
     await storageSet({ gameId, actorPair, clicks, finished });
     role = 'guest';
     await storageSet({ role });
@@ -699,7 +793,7 @@ async function joinGameWithId(inputId) {
     updateGameControls();
     startPolling();
 
-    // If game already started (startedAt present) the poll will redirect this client automatically
+    // If game already started (startedAt present) the poll will redirect this client automatically (if participant)
   } catch (err) {
     console.error("joinGameWithId failed", err);
     alert("Failed to join game. Check DB URL and code.");
@@ -826,29 +920,37 @@ async function pollOnce() {
         return;
     }
 
-    // If we're host and there are >=2 players and game has not started, attempt to set startedAt
-    if (!snapshot.startedAt && role === 'host' && playerIds.length >= 2) {
-      try {
-        await dbPatch(`${gameId}`, { startedAt: Date.now(), status: "active" });
-        console.log("Host set startedAt");
-      } catch (err) {
-        console.warn("Failed to set startedAt (host)", err);
-      }
-    }
-
-    // If startedAt is set and we haven't redirected yet, redirect both clients to actorA
+    // If startedAt is set and we haven't redirected yet, redirect only participants to actorA
     if (snapshot.startedAt && !hasRedirected) {
       if (snapshot.actorA && snapshot.actorB) {
         actorPair = [snapshot.actorA, snapshot.actorB];
         await storageSet({ actorPair });
       }
-      await sleep(150);
-      await storageSet({ gameId });
-      if (actorPair && actorPair[0] && actorPair[0].url) {
-        hasRedirected = true;
-        await storageSet({ hasRedirected }); 
-        window.location.href = actorPair[0].url;
-        return;
+
+      // Determine participant membership:
+      // - Prefer explicit participants list (snapshot.participants)
+      // - Fallback to considering all non-gaveUp players as participants for backwards compatibility
+      const amParticipant = (snapshot.participants && snapshot.participants[playerId]) ||
+                            (!snapshot.participants && currentPlayer && !currentPlayer.gaveUp);
+
+      if (amParticipant) {
+        // Make sure local clicks/finished/hasRedirected are reset before redirect so UI/state doesn't linger
+        clicks = 0;
+        finished = false;
+        hasRedirected = false;
+        await storageSet({ clicks, finished, hasRedirected, gameId });
+
+        await sleep(150);
+        if (actorPair && actorPair[0] && actorPair[0].url) {
+          hasRedirected = true;
+          await storageSet({ hasRedirected });
+          window.location.href = actorPair[0].url;
+          return;
+        }
+      } else {
+        // Not a participant -- remain in lobby. Ensure we show lobby UI.
+        refreshStatusUI(snapshot);
+        renderPlayersList(snapshot.players || {});
       }
     }
 
@@ -899,7 +1001,8 @@ async function pollOnce() {
       await dbPatch(`${gameId}`, { 
           winner: winnerPid, 
           winnerClicks: minClicks, 
-          status: "finished" 
+          status: "finished",
+          startedAt: null // clear startedAt to indicate round ended
       });
       console.log(`Host set winner: ${winnerPid} in ${minClicks} clicks.`);
     }
@@ -1027,10 +1130,32 @@ nameSaveBtn.addEventListener("click", async () => {
   refreshStatusUI();
 });
 
-// Play Again Button Listener
-playAgainBtn.addEventListener("click", () => {
-    // Leaves the current game (clears storage/state), then restarts the UI state
-    leaveGame(true);
+// Play Again Button Listener (mark ready + return to lobby)
+playAgainBtn.addEventListener("click", async () => {
+  if (!gameId) return;
+  try {
+    // Reset local counters so the UI doesn't show previous round values
+    clicks = 0;
+    finished = false;
+    hasRedirected = false;
+    await storageSet({ clicks, finished, hasRedirected });
+
+    // Mark this player ready for the next round (don't leave the game)
+    await dbPatch(`${gameId}/players/${playerId}`, { ready: true, gaveUp: false, finishedAt: null, clicks: 0, name: displayName });
+
+    // Move the game into lobby mode so host can start the next round; clear previous winner/startedAt/participants
+    await dbPatch(`${gameId}`, { status: 'lobby', winner: null, winnerClicks: null, startedAt: null, participants: null });
+
+    // Refresh UI to show lobby state
+    const snap = await dbGet(`${gameId}`);
+    refreshStatusUI(snap);
+    renderPlayersList(snap.players || {});
+    updateGameControls();
+    // polling already running; nothing more to do
+  } catch (err) {
+    console.error("Failed to ready for next round", err);
+    alert("Failed to mark ready.");
+  }
 });
 
 // ----------------------
