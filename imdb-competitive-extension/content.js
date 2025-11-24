@@ -220,15 +220,26 @@ winnerTextContainer.appendChild(leaderboardList);
 // Play Again Button
 const playAgainBtn = document.createElement("button");
 playAgainBtn.textContent = "Play Again";
+// Make the whole visible button area clickable: full-width, block, comfortable padding
 Object.assign(playAgainBtn.style, { 
-    padding: "8px 12px", 
+    padding: "12px 14px", 
     borderRadius: "6px", 
     background: "#f5c518", 
     color: "#000", 
     border: "2px solid #000", 
     fontWeight: "bold",
-    cursor: "pointer" 
+    cursor: "pointer",
+    display: "block",
+    width: "100%",
+    boxSizing: "border-box",
+    marginTop: "8px",
+    textAlign: "center",
+    // increase tap target on touch devices
+    touchAction: "manipulation"
 });
+// ensure button receives pointer events if something is overlaid; give it high z-index
+playAgainBtn.style.zIndex = "1000001";
+playAgainBtn.style.pointerEvents = "auto";
 winnerBox.appendChild(playAgainBtn);
 
 uiBox.appendChild(winnerBox); // Append winner box to the main UI box
@@ -931,20 +942,34 @@ async function pollOnce() {
       }
 
       // Determine participant membership:
-      // - Prefer explicit participants list (snapshot.participants)
-      // - Also accept snapshot.players[playerId].ready (covers race where per-player resets haven't landed yet)
-      // - Fallback to considering all non-gaveUp players as participants for backwards compatibility
-      const playerReadyFlag = snapshot.players && snapshot.players[playerId] && snapshot.players[playerId].ready;
-      const amParticipant = (snapshot.participants && snapshot.participants[playerId]) ||
+      // - If the host explicitly included this player in snapshot.participants -> treat them as participant ALWAYS
+      // - Otherwise accept snapshot.players[playerId].ready (covers race where per-player resets haven't landed yet)
+      // - Fallback to old behavior: when there's no participants map, consider non-gaveUp players participants
+      const serverPlayerRec = snapshot.players && snapshot.players[playerId] ? snapshot.players[playerId] : null;
+      const playerReadyFlag = !!(serverPlayerRec && serverPlayerRec.ready);
+      const playerGaveUpFlag = !!(serverPlayerRec && serverPlayerRec.gaveUp);
+
+      // New: prefer the explicit participants map from the host and ignore gaveUp when host explicitly included the player
+      const explicitlyIncluded = !!(snapshot.participants && snapshot.participants[playerId]);
+
+      const amParticipant = explicitlyIncluded ||
                             playerReadyFlag ||
-                            (!snapshot.participants && currentPlayer && !currentPlayer.gaveUp);
+                            (!snapshot.participants && serverPlayerRec && !playerGaveUpFlag);
 
       if (amParticipant) {
-        // Make sure local clicks/finished/hasRedirected are reset before redirect so UI/state doesn't linger
-        clicks = 0;
-        finished = false;
-        hasRedirected = false;
-        await storageSet({ clicks, finished, hasRedirected, gameId });
+        // If the host explicitly included us, clear any stale local gave-up/finished state so redirect happens reliably.
+        // This is defensive for races where local storage still marked 'finished' or 'gaveUp' after clicking Give Up earlier.
+        if (explicitlyIncluded) {
+          finished = false;
+          hasRedirected = false;
+          await storageSet({ finished, hasRedirected });
+        } else {
+          // For other cases, also ensure we clear finished so UI/redirect flow is fresh
+          clicks = 0;
+          finished = false;
+          hasRedirected = false;
+          await storageSet({ clicks, finished, hasRedirected, gameId });
+        }
 
         await sleep(150);
         if (actorPair && actorPair[0] && actorPair[0].url) {
@@ -1137,7 +1162,8 @@ nameSaveBtn.addEventListener("click", async () => {
 });
 
 // Play Again Button Listener (mark ready + return to lobby)
-playAgainBtn.addEventListener("click", async () => {
+// Moved into named handler so it can be invoked by the button itself and by a fallback click detector
+async function handlePlayAgainClick() {
   if (!gameId) return;
   try {
     // Reset local counters so the UI doesn't show previous round values
@@ -1161,6 +1187,29 @@ playAgainBtn.addEventListener("click", async () => {
   } catch (err) {
     console.error("Failed to ready for next round", err);
     alert("Failed to mark ready.");
+  }
+}
+
+// attach handler to the button
+playAgainBtn.addEventListener('click', handlePlayAgainClick);
+
+// fallback: winnerBox click handler detects clicks that land within the visible button rect
+// and calls the same handler. This helps if something overlays the button and prevents
+// the button's own click event from firing in some browsers / devices.
+winnerBox.addEventListener('click', (e) => {
+  try {
+    const rect = playAgainBtn.getBoundingClientRect();
+    const x = e.clientX;
+    const y = e.clientY;
+    if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) {
+      // call handler but don't await (click handler already handles async)
+      handlePlayAgainClick();
+      // prevent duplicate handling by preventing default propagation
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  } catch (err) {
+    // ignore; non-critical
   }
 });
 
