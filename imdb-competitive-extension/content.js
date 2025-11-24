@@ -132,6 +132,7 @@ let pollingInterval = null;
 let displayName = null;
 let role = null; // 'host' | 'guest' | null
 let hasRedirected = false; // Now persistent via storage
+let finished = false; // local session flag to block further clicks after finishing
 
 // ----------------------
 // UI overlay (reworked: includes name input + players list)
@@ -174,7 +175,7 @@ Object.assign(winnerBox.style, {
   left: "0",
   width: "100%",
   height: "100%",
-  backgroundColor: "rgba(0,0,0)",
+  backgroundColor: "rgba(0,0,0,0.9)",
   color: "#f5c518",
   display: "none",
   flexDirection: "column",
@@ -284,16 +285,15 @@ Object.assign(copybtn.style, {
 actionRow.appendChild(copybtn);
 
 // Copy Button code to copy code
-document.getElementById("copybtn").addEventListener("click", () => {
-  navigator.clipboard.writeText(gameId)
-    .then(() => {
-      console.log("Game ID copied to clipboard:", gameId);
-      // Optional: show a message to the user
-      alert("Game ID copied!");
-    })
-    .catch(err => {
-      console.error("Failed to copy Game ID:", err);
-    });
+copybtn.addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText(gameId || "");
+    console.log("Game ID copied to clipboard:", gameId);
+    alert("Game ID copied!");
+  } catch (err) {
+    console.error("Failed to copy Game ID:", err);
+    alert("Failed to copy Game ID");
+  }
 });
 
 const leaveBtn = document.createElement("button");
@@ -380,7 +380,7 @@ uiBox.appendChild(hintDiv);
 // Initialization
 (async function init() {
   try {
-    const stored = await storageGet(['playerId', 'gameId', 'actorPair', 'clicks', 'displayName', 'role', 'hasRedirected']);
+    const stored = await storageGet(['playerId', 'gameId', 'actorPair', 'clicks', 'displayName', 'role', 'hasRedirected', 'finished']);
     if (stored.playerId) playerId = stored.playerId;
     else {
       playerId = randId(6);
@@ -392,6 +392,7 @@ uiBox.appendChild(hintDiv);
 
     if (stored.role) role = stored.role;
     if (stored.hasRedirected) hasRedirected = stored.hasRedirected; 
+    if (stored.finished) finished = stored.finished;
 
     if (stored.gameId) {
       gameId = stored.gameId;
@@ -401,7 +402,7 @@ uiBox.appendChild(hintDiv);
     }
     refreshStatusUI();
     updateGameControls();
-    console.log("IMDB Click Race initialized, playerId:", playerId, "name:", displayName, "redirected:", hasRedirected);
+    console.log("IMDB Click Race initialized, playerId:", playerId, "name:", displayName, "redirected:", hasRedirected, "finished:", finished);
   } catch (err) {
     console.error("Init error", err);
   }
@@ -488,7 +489,7 @@ function refreshStatusUI(snapshotGame) {
         gaveUpPlayers.forEach(player => {
             const playerName = player.name || player.pid;
             const listItem = document.createElement('div');
-            listItem.innerHTML = `${playerName} — **Gave Up** 🏳️`;
+            listItem.innerHTML = `${playerName} — Gave Up 🏳️`;
             listItem.style.textAlign = 'center';
             listItem.style.opacity = '0.8';
             
@@ -572,7 +573,7 @@ function renderPlayersList(playersObj) {
     if (p.finishedAt) {
       statusLabel = ` — ${p.clicks} clicks ✅ finished`;
     } else if (p.gaveUp) {
-      statusLabel = " — **GAVE UP** 🏳️";
+      statusLabel = " — GAVE UP 🏳️";
       row.style.opacity = '0.6';
     } else if (typeof p.clicks !== 'undefined') {
       statusLabel = ` — ${p.clicks} clicks`;
@@ -610,6 +611,7 @@ async function createGameAndStart() {
   const shuffled = [...actorList].sort(() => Math.random() - 0.5);
   actorPair = [shuffled[0], shuffled[1]];
   clicks = 0;
+  finished = false;
 
   const now = Date.now();
   const gameObj = {
@@ -626,7 +628,7 @@ async function createGameAndStart() {
   try {
     // create game and mark as started immediately
     await dbPut(`${gameId}`, gameObj);
-    await storageSet({ gameId, actorPair, clicks });
+    await storageSet({ gameId, actorPair, clicks, finished });
     role = 'host';
     await storageSet({ role });
     refreshStatusUI(gameObj);
@@ -656,10 +658,11 @@ async function joinGameWithId(inputId) {
     gameId = id;
     actorPair = [game.actorA, game.actorB];
     clicks = 0;
+    finished = false;
 
     // add self to players
     await dbPatch(`${gameId}/players/${playerId}`, { clicks: 0, name: displayName, gaveUp: false });
-    await storageSet({ gameId, actorPair, clicks });
+    await storageSet({ gameId, actorPair, clicks, finished });
     role = 'guest';
     await storageSet({ role });
 
@@ -678,6 +681,8 @@ async function giveUpGame() {
     if (!gameId || !confirm("Are you sure you want to give up? You will be excluded from winning.")) return;
     
     stopPolling(); // Stop polling immediately for the player giving up
+    finished = true;
+    await storageSet({ finished });
 
     try {
         // 1. Set the gaveUp flag for the current player
@@ -735,6 +740,8 @@ async function leaveGame(shouldRestart = false) {
           clicks = 0;
           role = null;
           hasRedirected = false;
+          finished = false;
+          await storageSet({ finished });
           refreshStatusUI();
           updateGameControls();
       } else {
@@ -752,12 +759,13 @@ async function leaveGame(shouldRestart = false) {
   
   // Clear local state and storage
   stopPolling();
-  await storageRemove(['gameId', 'actorPair', 'clicks', 'role', 'hasRedirected']); 
+  await storageRemove(['gameId', 'actorPair', 'clicks', 'role', 'hasRedirected', 'finished']); 
   gameId = null;
   actorPair = null;
   clicks = 0;
   role = null;
   hasRedirected = false;
+  finished = false;
   
   // Re-run UI update
   refreshStatusUI();
@@ -898,6 +906,9 @@ document.addEventListener("click", async (event) => {
   // Only actor pages count (allow extra query params)
   if (!/^https:\/\/www\.imdb\.com\/name\/nm\d+\/?/.test(href)) return;
 
+  // If we've already marked finished in this session, ignore further clicks
+  if (finished) return;
+
   if (!actorPair) {
     try {
       const snapshot = await dbGet(`${gameId}`);
@@ -908,23 +919,37 @@ document.addEventListener("click", async (event) => {
     }
   }
 
-  clicks = (Number(clicks) || 0) + 1;
+  // Double-check server-side that this player hasn't finished or given up (prevents post-finish increments)
   try {
-    await storageSet({ clicks });
-    // Ensure gaveUp is explicitly set to false on a click
-    await dbPatch(`${gameId}/players/${playerId}`, { clicks, name: displayName, gaveUp: false }); 
+    const playerRec = await dbGet(`${gameId}/players/${playerId}`);
+    if (playerRec && (playerRec.finishedAt || playerRec.gaveUp)) {
+      finished = !!playerRec.finishedAt || !!playerRec.gaveUp;
+      await storageSet({ finished });
+      return;
+    }
+
+    // Determine new clicks based on latest known value (server preferred if available)
+    const serverClicks = Number(playerRec?.clicks) || 0;
+    const currentLocalClicks = Number(clicks) || 0;
+    const base = Math.max(serverClicks, currentLocalClicks);
+    const newClicks = base + 1;
+    clicks = newClicks; // update local counter
+
+    const targetUrl = actorPair?.[1]?.url;
+    if (targetUrl && href.startsWith(targetUrl)) {
+      // finishing click: write clicks + finishedAt atomically
+      const finishedAt = Date.now();
+      await dbPatch(`${gameId}/players/${playerId}`, { clicks: newClicks, finishedAt, name: displayName, gaveUp: false });
+      finished = true;
+      await storageSet({ clicks, finished });
+      // The poll function will now detect the winner and display the message to all players.
+    } else {
+      // non-finishing click: just update clicks
+      await dbPatch(`${gameId}/players/${playerId}`, { clicks: newClicks, name: displayName, gaveUp: false }); 
+      await storageSet({ clicks });
+    }
   } catch (err) {
     console.error("Failed to persist click", err);
-  }
-
-  const targetUrl = actorPair?.[1]?.url;
-  if (targetUrl && href.startsWith(targetUrl)) {
-    try {
-      await dbPatch(`${gameId}/players/${playerId}`, { finishedAt: Date.now(), name: displayName });
-      // The poll function will now detect the winner and display the message to all players.
-    } catch (err) {
-      console.error("Failed to set finishedAt", err);
-    }
   }
 });
 
@@ -982,7 +1007,7 @@ playAgainBtn.addEventListener("click", () => {
 // ----------------------
 // Initial rehydration
 (async function initialRefresh() {
-  const stored = await storageGet(['playerId', 'gameId', 'actorPair', 'clicks', 'displayName', 'role', 'hasRedirected']);
+  const stored = await storageGet(['playerId', 'gameId', 'actorPair', 'clicks', 'displayName', 'role', 'hasRedirected', 'finished']);
   if (stored.playerId) playerId = stored.playerId;
   if (stored.displayName) {
     displayName = stored.displayName;
@@ -990,6 +1015,7 @@ playAgainBtn.addEventListener("click", () => {
   }
   if (stored.role) role = stored.role;
   if (stored.hasRedirected) hasRedirected = stored.hasRedirected; 
+  if (stored.finished) finished = stored.finished;
 
   if (stored.gameId) {
     gameId = stored.gameId;
