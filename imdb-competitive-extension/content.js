@@ -284,17 +284,46 @@ Object.assign(copybtn.style, {
 });
 actionRow.appendChild(copybtn);
 
-// Copy Button code to copy code
+// Copy Button code to copy code (non-blocking notice)
+const copyNotice = document.createElement('div');
+Object.assign(copyNotice.style, {
+  marginTop: '3px',
+  padding: '6px 6px',
+  background: 'rgb(245, 197, 24)',
+  color: '#000',
+  borderRadius: '0px',
+  fontSize: '12px',
+  display: 'none',
+  textAlign: 'left'
+});
+copyNotice.setAttribute('aria-live','polite');
+actionRow.appendChild(copyNotice);
+
+let copyNoticeTimeout = null;
+
 copybtn.addEventListener("click", async () => {
   try {
     await navigator.clipboard.writeText(gameId || "");
     console.log("Game ID copied to clipboard:", gameId);
-    alert("Game ID copied!");
+    showCopyNotice("Game code copied!");
   } catch (err) {
     console.error("Failed to copy Game ID:", err);
-    alert("Failed to copy Game ID");
+    showCopyNotice("Failed to copy game code");
   }
 });
+
+function showCopyNotice(text) {
+  if (copyNoticeTimeout) {
+    clearTimeout(copyNoticeTimeout);
+    copyNoticeTimeout = null;
+  }
+  copyNotice.textContent = text;
+  copyNotice.style.display = 'block';
+  copyNoticeTimeout = setTimeout(() => {
+    copyNotice.style.display = 'none';
+    copyNoticeTimeout = null;
+  }, 2000);
+}
 
 const leaveBtn = document.createElement("button");
 leaveBtn.textContent = "Leave Game";
