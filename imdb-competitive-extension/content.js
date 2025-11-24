@@ -174,7 +174,7 @@ Object.assign(winnerBox.style, {
   left: "0",
   width: "100%",
   height: "100%",
-  backgroundColor: "rgba(0,0,0,0.85)",
+  backgroundColor: "rgba(0,0,0)",
   color: "#f5c518",
   display: "none",
   flexDirection: "column",
@@ -267,6 +267,35 @@ Object.assign(giveUpBtn.style, {
 });
 actionRow.appendChild(giveUpBtn);
 
+// Copy Code Button
+const copybtn = document.createElement("button");
+copybtn.textContent = "Copy Code";
+copybtn.id = 'copybtn';
+Object.assign(copybtn.style, { 
+    padding: "6px 8px", 
+    
+    marginRight: "6px", 
+    borderRadius: "6px", 
+    background: "#c4341bff", 
+    color: "#fff", 
+    border: "none", 
+    cursor: "pointer" 
+});
+actionRow.appendChild(copybtn);
+
+// Copy Button code to copy code
+document.getElementById("copybtn").addEventListener("click", () => {
+  navigator.clipboard.writeText(gameId)
+    .then(() => {
+      console.log("Game ID copied to clipboard:", gameId);
+      // Optional: show a message to the user
+      alert("Game ID copied!");
+    })
+    .catch(err => {
+      console.error("Failed to copy Game ID:", err);
+    });
+});
+
 const leaveBtn = document.createElement("button");
 leaveBtn.textContent = "Leave Game";
 Object.assign(leaveBtn.style, { 
@@ -342,7 +371,7 @@ uiBox.appendChild(statusDiv);
 // hint
 const hintDiv = document.createElement("div");
 hintDiv.style.fontSize = "11px";
-hintDiv.style.opacity = "0.9";
+hintDiv.style.opacity = "0";
 hintDiv.style.marginTop = "8px";
 hintDiv.innerHTML = "Create a game to generate an ID and enter the lobby. When 2 players are present the game will start automatically.";
 uiBox.appendChild(hintDiv);
@@ -413,7 +442,7 @@ function refreshStatusUI(snapshotGame) {
         // Display 1st Place (The Winner)
         const winner = finishedPlayers[0];
         const winnerName = winner.name || winner.pid;
-        winnerText.innerHTML = `🏁 **${winnerName} WINS!** 🏆`;
+        winnerText.innerHTML = `🏁 ${winnerName} WINS! 🏆`;
         
         // Display the rest of the finished leaderboard
         finishedPlayers.forEach((player, index) => {
@@ -425,7 +454,7 @@ function refreshStatusUI(snapshotGame) {
             // Use correct ordinal suffix
             const suffix = rank === 1 ? 'st' : (rank === 2 ? 'nd' : (rank === 3 ? 'rd' : 'th'));
             
-            listItem.innerHTML = `**${rank}${suffix} Place:** ${playerName} (${clicks} clicks)`;
+            listItem.innerHTML = `${rank}${suffix} Place: ${playerName} (${clicks} clicks)`;
             listItem.style.textAlign = 'center';
             
             // Highlight the current player if they finished
