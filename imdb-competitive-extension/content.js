@@ -139,13 +139,14 @@ let lastReadyAt = null; // timestamp when user clicked Play Again (local helper 
 // ----------------------
 // UI overlay (reworked: includes name input + players list)
 const uiBox = document.createElement("div");
+uiBox.id = "uiOverlay"
 Object.assign(uiBox.style, {
   position: "fixed",
   bottom: "20px",
   right: "20px",
   width: "360px",
   maxWidth: "calc(100% - 40px)",
-  backgroundColor: "#f5c518",
+  background: "linear-gradient(295deg,rgba(110, 88, 10, 1) 0%, rgba(245, 197, 24, 1) 100%)",
   color: "#000",
   padding: "12px",
   borderRadius: "10px",
@@ -178,13 +179,14 @@ nameRow.style.marginTop = "8px";
 uiBox.appendChild(nameRow);
 
 const nameInput = document.createElement("input");
+nameInput.id = "nameInput";
 nameInput.placeholder = "Display name (you)";
-Object.assign(nameInput.style, { padding: "6px", flex: "1" });
+Object.assign(nameInput.style, { padding: "6px", flex: "1", marginBottom: "20px", });
 nameRow.appendChild(nameInput);
 
 const nameSaveBtn = document.createElement("button");
 nameSaveBtn.textContent = "Save";
-Object.assign(nameSaveBtn.style, { padding: "6px 8px", borderRadius: "6px", background: "#333", color: "#fff", border: "none", cursor: "pointer" });
+Object.assign(nameSaveBtn.style, { marginBottom: "20px", padding: "6px 8px", borderRadius: "6px", background: "#3E49AD", color: "#fff", border: "none", cursor: "pointer" });
 nameRow.appendChild(nameSaveBtn);
 
 // Global round timer (moved below nameRow and above players lobby list, left aligned)
@@ -316,7 +318,7 @@ Object.assign(copybtn.style, {
     padding: "6px 8px",
     marginRight: "6px",
     borderRadius: "6px",
-    background: "#c4341bff",
+    background: "#3E49AD",
     color: "#fff",
     border: "none",
     cursor: "pointer"
@@ -371,7 +373,7 @@ Object.assign(startRoundBtn.style, {
   padding: "6px 8px",
   marginRight: "6px",
   borderRadius: "6px",
-  background: "#004d00",
+  background: "#3E49AD",
   color: "#fff",
   border: "none",
   cursor: "pointer",
@@ -394,7 +396,7 @@ leaveBtn.textContent = "Leave Game";
 Object.assign(leaveBtn.style, {
     padding: "6px 8px",
     borderRadius: "6px",
-    background: "#b22222",
+    background: "#3E49AD",
     color: "#fff",
     border: "none",
     cursor: "pointer"
@@ -573,7 +575,7 @@ function refreshStatusUI(snapshotGame) {
         const winnerName = winner.name || winner.pid;
         const baseStart = snapshotGame.startedAt || roundStartedAt;
         const winnerTime = (winner.finishedAt && baseStart) ? formatDuration(winner.finishedAt - baseStart) : "";
-        winnerText.innerHTML = `🏁 ${winnerName} WINS! 🏆 ${winnerTime ? `— ${winnerTime}` : ''}`;
+        winnerText.innerHTML = `${winnerName} WINS! ${winnerTime ? `${winnerTime}` : ''}`;
 
         // Display the rest of the finished leaderboard
         finishedPlayers.forEach((player, index) => {
