@@ -64,7 +64,7 @@ const actorList = [
   { name: "Peter Dinklage", url: "https://www.imdb.com/name/nm0227759/" },
   { name: "Sophie Turner", url: "https://www.imdb.com/name/nm3849842/" },
   { name: "Maisie Williams", url: "https://www.imdb.com/name/nm3586035/" },
-  { name: "Pedro Pascal", url: "https://www.imdb.com/name/nm0050959/" },
+  { name: "Pedro Rascal", url: "https://www.imdb.com/name/nm0050959/" },
   { name: "Oscar Isaac", url: "https://www.imdb.com/name/nm1209966/" },
   { name: "John Boyega", url: "https://www.imdb.com/name/nm3915784/" },
   { name: "Daisy Ridley", url: "https://www.imdb.com/name/nm5397459/" },
