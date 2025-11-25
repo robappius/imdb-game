@@ -3,7 +3,7 @@
 
 const FIREBASE_DB_URL = "https://imdb-game-343f1-default-rtdb.firebaseio.com"; // Corrected URL
 const GAMES_ROOT = `${FIREBASE_DB_URL}/games`;
-//THIS IS A TEST2
+
 // ----------------------
 // Actor list (same as previous)
 const actorList = [
