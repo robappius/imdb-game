@@ -202,13 +202,14 @@ Object.assign(roundTimerDiv.style, {
 
 // --- WINNER MESSAGE CONTAINER ---
 const winnerBox = document.createElement("div");
+winnerBox.id = "winnerbox";
 Object.assign(winnerBox.style, {
   position: "absolute",
   top: "0",
   left: "0",
   width: "100%",
   height: "100%",
-  backgroundColor: "rgba(0,0,0,0.9)",
+  background: "linear-gradient(295deg,rgba(62, 73, 173, 1) 0%, rgba(90, 101, 196, 1) 100%)",
   color: "#f5c518",
   display: "none",
   flexDirection: "column",
@@ -231,8 +232,7 @@ const winnerText = document.createElement("div");
 Object.assign(winnerText.style, {
   fontWeight: "bold",
   fontSize: "1.4em",
-  marginBottom: "8px",
-  textShadow: "1px 1px 2px #000"
+  marginBottom: "8px"
 });
 winnerTextContainer.appendChild(winnerText);
 
@@ -256,15 +256,13 @@ playAgainBtn.textContent = "Play Again";
 // Make the whole visible button area clickable: full-width, block, comfortable padding
 Object.assign(playAgainBtn.style, {
     padding: "12px 14px",
-    borderRadius: "6px",
+    borderRadius: "24px",
     background: "#f5c518",
     color: "#000",
-    border: "2px solid #000",
     fontWeight: "bold",
     cursor: "pointer",
     display: "block",
     width: "100%",
-    boxSizing: "border-box",
     marginTop: "8px",
     textAlign: "center",
     touchAction: "manipulation"
