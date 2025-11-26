@@ -1,0 +1,14 @@
+.good-button {
+    margin: 2px;
+    margin-bottom: 20px;
+    padding: 6px 8px;
+    border-radius: 6px;
+    background: #3E49AD;
+    color: #fff;
+    border: none;
+    cursor: pointer;
+}
+
+.good-button:hover {
+    background: #0f1655;
+}

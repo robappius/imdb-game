@@ -3,7 +3,7 @@
 
 const FIREBASE_DB_URL = "https://imdb-game-343f1-default-rtdb.firebaseio.com"; // Corrected URL
 const GAMES_ROOT = `${FIREBASE_DB_URL}/games`;
-
+//THIS IS THE FED BRANCH
 // ----------------------
 // Actor list (same as previous)
 const actorList = [
@@ -139,13 +139,14 @@ let lastReadyAt = null; // timestamp when user clicked Play Again (local helper 
 // ----------------------
 // UI overlay (reworked: includes name input + players list)
 const uiBox = document.createElement("div");
+uiBox.id = "uiOverlay"
 Object.assign(uiBox.style, {
   position: "fixed",
   bottom: "20px",
   right: "20px",
   width: "360px",
   maxWidth: "calc(100% - 40px)",
-  backgroundColor: "#f5c518",
+  background: "linear-gradient(295deg,rgba(110, 88, 10, 1) 0%, rgba(245, 197, 24, 1) 100%)",
   color: "#000",
   padding: "12px",
   borderRadius: "10px",
@@ -178,13 +179,15 @@ nameRow.style.marginTop = "8px";
 uiBox.appendChild(nameRow);
 
 const nameInput = document.createElement("input");
+nameInput.id = "nameInput";
 nameInput.placeholder = "Display name (you)";
-Object.assign(nameInput.style, { padding: "6px", flex: "1" });
+Object.assign(nameInput.style, { padding: "6px", flex: "1", marginBottom: "20px", });
 nameRow.appendChild(nameInput);
 
 const nameSaveBtn = document.createElement("button");
 nameSaveBtn.textContent = "Save";
-Object.assign(nameSaveBtn.style, { padding: "6px 8px", borderRadius: "6px", background: "#333", color: "#fff", border: "none", cursor: "pointer" });
+nameSaveBtn.id = "nameSaveBtn";
+nameSaveBtn.className = "good-button";
 nameRow.appendChild(nameSaveBtn);
 
 // Global round timer (moved below nameRow and above players lobby list, left aligned)
@@ -200,13 +203,14 @@ Object.assign(roundTimerDiv.style, {
 
 // --- WINNER MESSAGE CONTAINER ---
 const winnerBox = document.createElement("div");
+winnerBox.id = "winnerbox";
 Object.assign(winnerBox.style, {
   position: "absolute",
   top: "0",
   left: "0",
   width: "100%",
   height: "100%",
-  backgroundColor: "rgba(0,0,0,0.9)",
+  background: "linear-gradient(295deg,rgba(62, 73, 173, 1) 0%, rgba(90, 101, 196, 1) 100%)",
   color: "#f5c518",
   display: "none",
   flexDirection: "column",
@@ -229,8 +233,7 @@ const winnerText = document.createElement("div");
 Object.assign(winnerText.style, {
   fontWeight: "bold",
   fontSize: "1.4em",
-  marginBottom: "8px",
-  textShadow: "1px 1px 2px #000"
+  marginBottom: "8px"
 });
 winnerTextContainer.appendChild(winnerText);
 
@@ -254,15 +257,13 @@ playAgainBtn.textContent = "Play Again";
 // Make the whole visible button area clickable: full-width, block, comfortable padding
 Object.assign(playAgainBtn.style, {
     padding: "12px 14px",
-    borderRadius: "6px",
+    borderRadius: "24px",
     background: "#f5c518",
     color: "#000",
-    border: "2px solid #000",
     fontWeight: "bold",
     cursor: "pointer",
     display: "block",
     width: "100%",
-    boxSizing: "border-box",
     marginTop: "8px",
     textAlign: "center",
     touchAction: "manipulation"
@@ -280,12 +281,12 @@ uiBox.appendChild(btnRow);
 
 const startBtn = document.createElement("button");
 startBtn.textContent = "Create Game";
-Object.assign(startBtn.style, { padding: "6px 8px", marginRight: "6px", borderRadius: "6px", background: "#000", color: "#fff", border: "none", cursor: "pointer" });
+startBtn.className = "good-button";
 btnRow.appendChild(startBtn);
 
 const joinBtn = document.createElement("button");
 joinBtn.textContent = "Join Game";
-Object.assign(joinBtn.style, { padding: "6px 8px", borderRadius: "6px", background: "#000", color: "#fff", border: "none", cursor: "pointer" });
+joinBtn.className = "good-button";
 btnRow.appendChild(joinBtn);
 
 // Action buttons (Leave/Give Up)
@@ -297,30 +298,15 @@ uiBox.appendChild(actionRow);
 // Give Up Button (New)
 const giveUpBtn = document.createElement("button");
 giveUpBtn.textContent = "Give Up";
-Object.assign(giveUpBtn.style, {
-    padding: "6px 8px",
-    marginRight: "6px",
-    borderRadius: "6px",
-    background: "#ff6347",
-    color: "#fff",
-    border: "none",
-    cursor: "pointer"
-});
+giveUpBtn.id = "biveUpBtn"
+giveUpBtn.className = "good-button";
 actionRow.appendChild(giveUpBtn);
 
 // Copy Code Button
 const copybtn = document.createElement("button");
 copybtn.textContent = "Copy Code";
 copybtn.id = 'copybtn';
-Object.assign(copybtn.style, {
-    padding: "6px 8px",
-    marginRight: "6px",
-    borderRadius: "6px",
-    background: "#c4341bff",
-    color: "#fff",
-    border: "none",
-    cursor: "pointer"
-});
+copybtn.className = "good-button"
 actionRow.appendChild(copybtn);
 
 // Copy Button code to copy code (non-blocking notice)
@@ -367,16 +353,7 @@ function showCopyNotice(text) {
 // START ROUND button (host-only)
 const startRoundBtn = document.createElement("button");
 startRoundBtn.textContent = "Start Round";
-Object.assign(startRoundBtn.style, {
-  padding: "6px 8px",
-  marginRight: "6px",
-  borderRadius: "6px",
-  background: "#004d00",
-  color: "#fff",
-  border: "none",
-  cursor: "pointer",
-  display: "none"
-});
+startRoundBtn.className = "good-button";
 actionRow.appendChild(startRoundBtn);
 
 startRoundBtn.addEventListener("click", async () => {
@@ -391,14 +368,7 @@ startRoundBtn.addEventListener("click", async () => {
 
 const leaveBtn = document.createElement("button");
 leaveBtn.textContent = "Leave Game";
-Object.assign(leaveBtn.style, {
-    padding: "6px 8px",
-    borderRadius: "6px",
-    background: "#b22222",
-    color: "#fff",
-    border: "none",
-    cursor: "pointer"
-});
+leaveBtn.className ="good-button";
 actionRow.appendChild(leaveBtn);
 
 // players list (lobby)
@@ -431,13 +401,14 @@ joinRow.style.marginTop = "8px";
 uiBox.appendChild(joinRow);
 
 const joinInput = document.createElement("input");
-joinInput.placeholder = "Enter Game ID (e.g. ABC12)";
+joinInput.placeholder = "Enter Game ID";
 Object.assign(joinInput.style, { padding: "6px", width: "160px", marginRight: "6px" });
 joinRow.appendChild(joinInput);
 
 const joinSubmit = document.createElement("button");
 joinSubmit.textContent = "Join";
-Object.assign(joinSubmit.style, { padding: "6px 8px", borderRadius: "6px", background: "#333", color: "#fff", border: "none", cursor: "pointer" });
+joinSubmit.id = "joinSubmit";
+joinSubmit.className = "good-button";
 joinRow.appendChild(joinSubmit);
 
 // status text
@@ -573,7 +544,7 @@ function refreshStatusUI(snapshotGame) {
         const winnerName = winner.name || winner.pid;
         const baseStart = snapshotGame.startedAt || roundStartedAt;
         const winnerTime = (winner.finishedAt && baseStart) ? formatDuration(winner.finishedAt - baseStart) : "";
-        winnerText.innerHTML = `🏁 ${winnerName} WINS! 🏆 ${winnerTime ? `— ${winnerTime}` : ''}`;
+        winnerText.innerHTML = `${winnerName} WINS! ${winnerTime ? `${winnerTime}` : ''}`;
 
         // Display the rest of the finished leaderboard
         finishedPlayers.forEach((player, index) => {
