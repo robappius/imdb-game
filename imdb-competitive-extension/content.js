@@ -330,23 +330,30 @@ copybtn.addEventListener("click", async () => {
   try {
     await navigator.clipboard.writeText(gameId || "");
     console.log("Game ID copied to clipboard:", gameId);
-    showCopyNotice("Game code copied!");
+
+    // Change button text and color
+    showCopyOnButton("Copied!", "green");
   } catch (err) {
     console.error("Failed to copy Game ID:", err);
-    showCopyNotice("Failed to copy game code");
+
+    // Show error feedback on button
+    showCopyOnButton("Failed!", "red");
   }
 });
 
-function showCopyNotice(text) {
-  if (copyNoticeTimeout) {
-    clearTimeout(copyNoticeTimeout);
-    copyNoticeTimeout = null;
-  }
-  copyNotice.textContent = text;
-  copyNotice.style.display = 'block';
-  copyNoticeTimeout = setTimeout(() => {
-    copyNotice.style.display = 'none';
-    copyNoticeTimeout = null;
+function showCopyOnButton(text, color) {
+  // Save original state
+  const originalText = copybtn.textContent;
+  const originalColor = copybtn.style.backgroundColor;
+
+  // Apply feedback
+  copybtn.textContent = text;
+  copybtn.style.backgroundColor = color;
+
+  // Reset after 2 seconds
+  setTimeout(() => {
+    copybtn.textContent = originalText;
+    copybtn.style.backgroundColor = originalColor;
   }, 2000);
 }
 
