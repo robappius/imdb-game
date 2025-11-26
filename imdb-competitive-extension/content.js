@@ -186,7 +186,8 @@ nameRow.appendChild(nameInput);
 
 const nameSaveBtn = document.createElement("button");
 nameSaveBtn.textContent = "Save";
-Object.assign(nameSaveBtn.style, { marginBottom: "20px", padding: "6px 8px", borderRadius: "6px", background: "#3E49AD", color: "#fff", border: "none", cursor: "pointer" });
+nameSaveBtn.id = "nameSaveBtn";
+nameSaveBtn.className = "good-button";
 nameRow.appendChild(nameSaveBtn);
 
 // Global round timer (moved below nameRow and above players lobby list, left aligned)
@@ -280,12 +281,12 @@ uiBox.appendChild(btnRow);
 
 const startBtn = document.createElement("button");
 startBtn.textContent = "Create Game";
-Object.assign(startBtn.style, { padding: "6px 8px", marginRight: "6px", borderRadius: "6px", background: "#000", color: "#fff", border: "none", cursor: "pointer" });
+startBtn.className = "good-button";
 btnRow.appendChild(startBtn);
 
 const joinBtn = document.createElement("button");
 joinBtn.textContent = "Join Game";
-Object.assign(joinBtn.style, { padding: "6px 8px", borderRadius: "6px", background: "#000", color: "#fff", border: "none", cursor: "pointer" });
+joinBtn.className = "good-button";
 btnRow.appendChild(joinBtn);
 
 // Action buttons (Leave/Give Up)
@@ -297,30 +298,15 @@ uiBox.appendChild(actionRow);
 // Give Up Button (New)
 const giveUpBtn = document.createElement("button");
 giveUpBtn.textContent = "Give Up";
-Object.assign(giveUpBtn.style, {
-    padding: "6px 8px",
-    marginRight: "6px",
-    borderRadius: "6px",
-    background: "#ff6347",
-    color: "#fff",
-    border: "none",
-    cursor: "pointer"
-});
+giveUpBtn.id = "biveUpBtn"
+giveUpBtn.className = "good-button";
 actionRow.appendChild(giveUpBtn);
 
 // Copy Code Button
 const copybtn = document.createElement("button");
 copybtn.textContent = "Copy Code";
 copybtn.id = 'copybtn';
-Object.assign(copybtn.style, {
-    padding: "6px 8px",
-    marginRight: "6px",
-    borderRadius: "6px",
-    background: "#3E49AD",
-    color: "#fff",
-    border: "none",
-    cursor: "pointer"
-});
+copybtn.className = "good-button"
 actionRow.appendChild(copybtn);
 
 // Copy Button code to copy code (non-blocking notice)
@@ -367,16 +353,7 @@ function showCopyNotice(text) {
 // START ROUND button (host-only)
 const startRoundBtn = document.createElement("button");
 startRoundBtn.textContent = "Start Round";
-Object.assign(startRoundBtn.style, {
-  padding: "6px 8px",
-  marginRight: "6px",
-  borderRadius: "6px",
-  background: "#3E49AD",
-  color: "#fff",
-  border: "none",
-  cursor: "pointer",
-  display: "none"
-});
+startRoundBtn.className = "good-button";
 actionRow.appendChild(startRoundBtn);
 
 startRoundBtn.addEventListener("click", async () => {
@@ -391,14 +368,7 @@ startRoundBtn.addEventListener("click", async () => {
 
 const leaveBtn = document.createElement("button");
 leaveBtn.textContent = "Leave Game";
-Object.assign(leaveBtn.style, {
-    padding: "6px 8px",
-    borderRadius: "6px",
-    background: "#3E49AD",
-    color: "#fff",
-    border: "none",
-    cursor: "pointer"
-});
+leaveBtn.className ="good-button";
 actionRow.appendChild(leaveBtn);
 
 // players list (lobby)
@@ -431,13 +401,14 @@ joinRow.style.marginTop = "8px";
 uiBox.appendChild(joinRow);
 
 const joinInput = document.createElement("input");
-joinInput.placeholder = "Enter Game ID (e.g. ABC12)";
+joinInput.placeholder = "Enter Game ID";
 Object.assign(joinInput.style, { padding: "6px", width: "160px", marginRight: "6px" });
 joinRow.appendChild(joinInput);
 
 const joinSubmit = document.createElement("button");
 joinSubmit.textContent = "Join";
-Object.assign(joinSubmit.style, { padding: "6px 8px", borderRadius: "6px", background: "#333", color: "#fff", border: "none", cursor: "pointer" });
+joinSubmit.id = "joinSubmit";
+joinSubmit.className = "good-button";
 joinRow.appendChild(joinSubmit);
 
 // status text
