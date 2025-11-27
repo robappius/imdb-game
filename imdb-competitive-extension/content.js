@@ -426,6 +426,121 @@ hintDiv.innerHTML = "Create a game to generate an ID and enter the lobby. When 2
 uiBox.appendChild(hintDiv);
 
 // ----------------------
+// RULES MODAL
+// Add a Rules button at the bottom of the main modal which opens a secondary modal overlay
+const rulesBtn = document.createElement("button");
+rulesBtn.textContent = "Rules";
+// use the shared stylesheet class instead of inline styles
+rulesBtn.className = "good-button";
+uiBox.appendChild(rulesBtn);
+
+// Create the overlay that will appear on top of everything
+const rulesOverlay = document.createElement("div");
+Object.assign(rulesOverlay.style, {
+  position: "fixed",
+  inset: "0",
+  background: "rgba(0,0,0,0.5)",
+  zIndex: 1000002,
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "20px",
+  boxSizing: "border-box",
+  display: "none" // ensure default is hidden and never shown automatically on load
+});
+rulesOverlay.setAttribute('aria-hidden', 'true');
+rulesOverlay.setAttribute('role', 'dialog');
+rulesOverlay.setAttribute('aria-modal', 'true');
+
+// Inner rules box
+const rulesBox = document.createElement("div");
+Object.assign(rulesBox.style, {
+  width: "420px",
+  maxWidth: "100%",
+  // match main modal golden styling
+  background: "linear-gradient(295deg,rgba(110, 88, 10, 1) 0%, rgba(245, 197, 24, 1) 100%)",
+  color: "#000", // black text like main UI
+  borderRadius: "10px",
+  padding: "16px",
+  boxSizing: "border-box",
+  boxShadow: "0 6px 24px rgba(0,0,0,0.4)",
+  textAlign: "left",
+  fontSize: "14px",
+  lineHeight: "1.4"
+});
+rulesOverlay.appendChild(rulesBox);
+
+// Title
+const rulesTitle = document.createElement("div");
+rulesTitle.textContent = "Rules";
+Object.assign(rulesTitle.style, {   fontFamily: "Arial, sans-serif", fontWeight: "700", fontSize: "16px", marginBottom: "8px", color: "#000" });
+rulesBox.appendChild(rulesTitle);
+
+// Rules content (ordered list)
+const rulesContent = document.createElement("div");
+rulesContent.innerHTML = `
+<ol style="font-family: Arial, sans-serif; padding-left: 18px; margin: 0 0 10px 0; list-style-type: decimal;">
+<li>Click through actors, movies and TV shows to reach the destination actor generated</li>
+<li>Only the clicks on actors will be counted in the click counter</li>
+<li>The player with the least actor clicks wins! If players are tied in click count then the player that reached the destination actor the fastest wins</li>
+</ol>
+`;
+rulesBox.appendChild(rulesContent);
+
+// Close button area
+const rulesCloseRow = document.createElement("div");
+Object.assign(rulesCloseRow.style, { textAlign: "right", marginTop: "10px" });
+const rulesCloseBtn = document.createElement("button");
+rulesCloseBtn.textContent = "Close";
+// use the shared stylesheet class instead of inline styles
+rulesCloseBtn.className = "good-button";
+rulesCloseRow.appendChild(rulesCloseBtn);
+rulesBox.appendChild(rulesCloseRow);
+
+// Append to body so it overlays the entire page (including the uiBox)
+document.body.appendChild(rulesOverlay);
+
+// Open / close handlers
+function openRulesModal() {
+  rulesOverlay.style.display = "flex";
+  rulesOverlay.setAttribute('aria-hidden', 'false');
+  // trap focus to close button for accessibility
+  rulesCloseBtn.focus();
+  // prevent background scrolling while modal is open
+  document.body.style.overflow = "hidden";
+}
+function closeRulesModal() {
+  rulesOverlay.style.display = "none";
+  rulesOverlay.setAttribute('aria-hidden', 'true');
+  document.body.style.overflow = "";
+  // return focus to the rules button
+  rulesBtn.focus();
+}
+
+rulesBtn.addEventListener("click", (e) => {
+  e.stopPropagation();
+  openRulesModal();
+});
+
+rulesCloseBtn.addEventListener("click", (e) => {
+  e.stopPropagation();
+  closeRulesModal();
+});
+
+// close when clicking outside the rules box
+rulesOverlay.addEventListener("click", (e) => {
+  if (e.target === rulesOverlay) {
+    closeRulesModal();
+  }
+});
+
+// close on Escape key
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && rulesOverlay.style.display === "flex") {
+    closeRulesModal();
+  }
+});
+
+// ----------------------
 // Initialization
 (async function init() {
   try {
@@ -453,7 +568,7 @@ uiBox.appendChild(hintDiv);
     }
     refreshStatusUI();
     updateGameControls();
-    console.log("IMDB Click Race initialized, playerId:", playerId, "name:", displayName, "redirected:", hasRedirected, "finished:", finished, "roundStartedAt:", roundStartedAt, "lastReadyAt:", lastReadyAt);
+    console.log("IMDB Click Race initialized", { playerId, displayName, hasRedirected, finished, roundStartedAt, lastReadyAt, gameId });
   } catch (err) {
     console.error("Init error", err);
   }
