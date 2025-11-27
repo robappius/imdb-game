@@ -638,115 +638,128 @@ function refreshStatusUI(snapshotGame) {
     storageSet({ hasRedirected }).catch(() => {});
   }
 
-  // --- WINNER LOGIC FOR UI ---
-  if (snapshotGame && snapshotGame.winner && snapshotGame.winnerClicks) {
-    const players = snapshotGame.players || {};
+// --- WINNER LOGIC FOR UI (replacement block) ---
+if (snapshotGame && snapshotGame.winner && snapshotGame.winnerClicks) {
+  const players = snapshotGame.players || {};
 
-    // 1. Separate players into two groups
-    const allPlayers = Object.keys(players).map(pid => ({ pid, ...players[pid] }));
+  // 1. Separate players into two groups
+  const allPlayers = Object.keys(players).map(pid => ({ pid, ...players[pid] }));
 
-    const finishedPlayers = allPlayers
-      .filter(p => p.finishedAt && !p.gaveUp)
-      .sort((a, b) => (a.clicks || Infinity) - (b.clicks || Infinity));
+  // Sort finished players by clicks, then by finishedAt (earliest first) to break ties
+  const finishedPlayers = allPlayers
+    .filter(p => p.finishedAt && !p.gaveUp)
+    .sort((a, b) => {
+      const ac = Number(a.clicks ?? Infinity);
+      const bc = Number(b.clicks ?? Infinity);
+      if (ac !== bc) return ac - bc;
+      const af = Number(a.finishedAt ?? Infinity);
+      const bf = Number(b.finishedAt ?? Infinity);
+      return af - bf;
+    });
 
-    const gaveUpPlayers = allPlayers
-      .filter(p => p.gaveUp);
+  const gaveUpPlayers = allPlayers
+    .filter(p => p.gaveUp);
 
-    leaderboardList.innerHTML = '';
+  leaderboardList.innerHTML = '';
 
-    if (finishedPlayers.length > 0) {
-        // Display 1st Place (The Winner)
-        const winner = finishedPlayers[0];
-        const winnerName = winner.name || winner.pid;
-        const baseStart = snapshotGame.startedAt || roundStartedAt;
-        const winnerTime = (winner.finishedAt && baseStart) ? formatDuration(winner.finishedAt - baseStart) : "";
-        winnerText.innerHTML = `${winnerName} WINS! ${winnerTime ? `${winnerTime}` : ''}`;
-
-        // Display the rest of the finished leaderboard
-        finishedPlayers.forEach((player, index) => {
-            const rank = index + 1;
-            const playerName = player.name || player.pid;
-            const clicks = player.clicks;
-            const base = snapshotGame.startedAt || roundStartedAt;
-            const playerTime = (player.finishedAt && base) ? formatDuration(player.finishedAt - base) : '';
-
-            const listItem = document.createElement('div');
-            listItem.style.display = 'flex';
-            listItem.style.justifyContent = 'space-between';
-            listItem.style.alignItems = 'center';
-            listItem.style.gap = '8px';
-            listItem.style.width = '100%';
-
-            const left = document.createElement('div');
-            // Use correct ordinal suffix
-            const suffix = rank === 1 ? 'st' : (rank === 2 ? 'nd' : (rank === 3 ? 'rd' : 'th'));
-            left.innerHTML = `${rank}${suffix} Place: <strong>${playerName}</strong> (${clicks} clicks)`;
-            left.style.textAlign = 'left';
-            left.style.flex = '1';
-
-            const timeDiv = document.createElement('div');
-            timeDiv.textContent = playerTime ? playerTime : '';
-            timeDiv.style.minWidth = '56px';
-            timeDiv.style.textAlign = 'right';
-            timeDiv.style.opacity = player.pid === playerId ? '1' : '0.95';
-
-            listItem.appendChild(left);
-            listItem.appendChild(timeDiv);
-
-            // Highlight the current player if they finished
-            if (player.pid === playerId) {
-                 left.style.fontWeight = '700';
-                 left.style.color = '#fff';
-            }
-
-            leaderboardList.appendChild(listItem);
-        });
-
+  if (finishedPlayers.length > 0) {
+    // Prefer the server-declared winner if present; otherwise fall back to the sorted list.
+    const serverWinnerPid = snapshotGame.winner;
+    let winner;
+    if (serverWinnerPid && players[serverWinnerPid] && players[serverWinnerPid].finishedAt) {
+      winner = { pid: serverWinnerPid, ...players[serverWinnerPid] };
     } else {
-        // This handles cases where a game ends but nobody actually finished (e.g. everyone gave up)
-        winnerText.innerHTML = `Game Ended`;
-        leaderboardList.innerHTML = 'No finishers recorded.';
+      // Fallback to first in the sorted finished list
+      winner = finishedPlayers[0];
     }
 
-    // 2. Append Gave Up players at the bottom
-    if (gaveUpPlayers.length > 0) {
-        const divider = document.createElement('div');
-        divider.style.borderTop = '1px dashed rgba(245, 197, 24, 0.4)';
-        divider.style.margin = '8px 0';
-        leaderboardList.appendChild(divider);
+    const winnerName = winner.name || winner.pid;
+    const baseStart = snapshotGame.startedAt || roundStartedAt;
+    const winnerTime = (winner.finishedAt && baseStart) ? formatDuration(winner.finishedAt - baseStart) : "";
+    winnerText.innerHTML = `${winnerName} WINS! ${winnerTime ? `${winnerTime}` : ''}`;
 
-        const gaveUpHeader = document.createElement('div');
-        gaveUpHeader.textContent = 'Non-Finishers:';
-        gaveUpHeader.style.fontWeight = 'bold';
-        gaveUpHeader.style.marginTop = '4px';
-        leaderboardList.appendChild(gaveUpHeader);
+    // Display the finished leaderboard (already sorted by clicks then finishedAt)
+    finishedPlayers.forEach((player, index) => {
+      const rank = index + 1;
+      const playerName = player.name || player.pid;
+      const clicks = player.clicks;
+      const base = snapshotGame.startedAt || roundStartedAt;
+      const playerTime = (player.finishedAt && base) ? formatDuration(player.finishedAt - base) : '';
 
-        gaveUpPlayers.forEach(player => {
-            const playerName = player.name || player.pid;
-            const listItem = document.createElement('div');
-            listItem.innerHTML = `${playerName} — Gave Up 🏳️`;
-            listItem.style.textAlign = 'center';
-            listItem.style.opacity = '0.8';
+      const listItem = document.createElement('div');
+      listItem.style.display = 'flex';
+      listItem.style.justifyContent = 'space-between';
+      listItem.style.alignItems = 'center';
+      listItem.style.gap = '8px';
+      listItem.style.width = '100%';
 
-            if (player.pid === playerId) {
-                 listItem.style.fontWeight = 'bold';
-                 listItem.style.color = '#fff';
-                 listItem.style.opacity = '1';
-            }
+      const left = document.createElement('div');
+      const suffix = rank === 1 ? 'st' : (rank === 2 ? 'nd' : (rank === 3 ? 'rd' : 'th'));
+      left.innerHTML = `${rank}${suffix} Place: <strong>${playerName}</strong> (${clicks} clicks)`;
+      left.style.textAlign = 'left';
+      left.style.flex = '1';
 
-            leaderboardList.appendChild(listItem);
-        });
-    }
+      const timeDiv = document.createElement('div');
+      timeDiv.textContent = playerTime ? playerTime : '';
+      timeDiv.style.minWidth = '56px';
+      timeDiv.style.textAlign = 'right';
+      timeDiv.style.opacity = player.pid === playerId ? '1' : '0.95';
 
-    winnerBox.style.display = "flex"; // Show the overlay
+      listItem.appendChild(left);
+      listItem.appendChild(timeDiv);
 
-    // Hide standard lobby/controls
-    lobbyBox.style.display = "none";
-    btnRow.style.display = "none";
-    nameRow.style.display = "none";
-    actionRow.style.display = "none";
+      // Highlight the current player if they finished
+      if (player.pid === playerId) {
+        left.style.fontWeight = '700';
+        left.style.color = '#fff';
+      }
 
+      leaderboardList.appendChild(listItem);
+    });
   } else {
+    // This handles cases where a game ends but nobody actually finished (e.g. everyone gave up)
+    winnerText.innerHTML = `Game Ended`;
+    leaderboardList.innerHTML = 'No finishers recorded.';
+  }
+
+  // 2. Append Gave Up players at the bottom
+  if (gaveUpPlayers.length > 0) {
+    const divider = document.createElement('div');
+    divider.style.borderTop = '1px dashed rgba(245, 197, 24, 0.4)';
+    divider.style.margin = '8px 0';
+    leaderboardList.appendChild(divider);
+
+    const gaveUpHeader = document.createElement('div');
+    gaveUpHeader.textContent = 'Non-Finishers:';
+    gaveUpHeader.style.fontWeight = 'bold';
+    gaveUpHeader.style.marginTop = '4px';
+    leaderboardList.appendChild(gaveUpHeader);
+
+    gaveUpPlayers.forEach(player => {
+      const playerName = player.name || player.pid;
+      const listItem = document.createElement('div');
+      listItem.innerHTML = `${playerName} — Gave Up 🏳️`;
+      listItem.style.textAlign = 'center';
+      listItem.style.opacity = '0.8';
+
+      if (player.pid === playerId) {
+        listItem.style.fontWeight = 'bold';
+        listItem.style.color = '#fff';
+        listItem.style.opacity = '1';
+      }
+
+      leaderboardList.appendChild(listItem);
+    });
+  }
+
+  winnerBox.style.display = "flex"; // Show the overlay
+
+  // Hide standard lobby/controls
+  lobbyBox.style.display = "none";
+  btnRow.style.display = "none";
+  nameRow.style.display = "none";
+  actionRow.style.display = "none";
+} else {
     // Hide winner box if no winner or game is not finished
     winnerBox.style.display = "none";
     if (gameId) {
@@ -1180,32 +1193,48 @@ async function pollOnce() {
         }
     }
 
-    if (conclude && !snapshot.winner && role === 'host') { 
-      let winnerPid;
-      let minClicks;
-
-      if (finishedPlayers.length > 0) {
-        // If there are finishers, find the one with min clicks
-        winnerPid = finishedPlayers[0];
-        minClicks = players[winnerPid].clicks || Infinity;
-        
-        for (const pid of finishedPlayers) {
-          const c = Number(players[pid].clicks) || Infinity;
-          if (c < minClicks) { minClicks = c; winnerPid = pid; }
-        }
-      } else {
-        // This case should be prevented by the 'finishedPlayers.length > 0' check.
-        return; 
+    if (conclude && !snapshot.winner && role === 'host') {
+      // New tie-aware selection:
+      // 1) Find minimum click count among finishers
+      // 2) From players with that click count, pick the one with the smallest finishedAt (earliest)
+      let winnerPid = null;
+      let minClicks = Infinity;
+    
+      // Determine minClicks first
+      for (const pid of finishedPlayers) {
+        const rec = players[pid];
+        const c = Number(rec?.clicks) || Infinity;
+        if (c < minClicks) minClicks = c;
       }
-      
+    
+      // Collect candidates with clicks === minClicks and pick earliest finishedAt
+      let earliestFinishedAt = Infinity;
+      for (const pid of finishedPlayers) {
+        const rec = players[pid];
+        const c = Number(rec?.clicks) || Infinity;
+        const finishedAt = Number(rec?.finishedAt) || Infinity;
+        if (c === minClicks) {
+          if (finishedAt < earliestFinishedAt) {
+            earliestFinishedAt = finishedAt;
+            winnerPid = pid;
+          }
+        }
+      }
+    
+      if (!winnerPid) {
+        // Fallback (defensive): pick first finished player
+        winnerPid = finishedPlayers[0];
+        minClicks = Number(players[winnerPid].clicks) || Infinity;
+      }
+    
       // Update DB with winner and set status to finished
-      await dbPatch(`${gameId}`, { 
-          winner: winnerPid, 
-          winnerClicks: minClicks, 
-          status: "finished",
-          startedAt: null // clear startedAt to indicate round ended
+      await dbPatch(`${gameId}`, {
+        winner: winnerPid,
+        winnerClicks: minClicks,
+        status: "finished",
+        startedAt: null // clear startedAt to indicate round ended
       });
-      console.log(`Host set winner: ${winnerPid} in ${minClicks} clicks.`);
+      console.log(`Host set winner: ${winnerPid} in ${minClicks} clicks (earliest finishedAt).`);
     }
 
   } catch (err) {
