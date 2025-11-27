@@ -420,8 +420,9 @@ uiBox.appendChild(statusDiv);
 // hint
 const hintDiv = document.createElement("div");
 hintDiv.style.fontSize = "11px";
-hintDiv.style.opacity = "0";
-hintDiv.style.marginTop = "8px";
+hintDiv.style.opacity = "100";
+hintDiv.style.marginTop = "2px";
+hintDiv.style.marginBottom = "12px";
 hintDiv.innerHTML = "Create a game to generate an ID and enter the lobby. When 2 players are present the host can start the round.";
 uiBox.appendChild(hintDiv);
 
@@ -443,7 +444,7 @@ Object.assign(rulesOverlay.style, {
   zIndex: 1000002,
   alignItems: "center",
   justifyContent: "center",
-  padding: "20px",
+  padding: "10px",
   boxSizing: "border-box",
   display: "none" // ensure default is hidden and never shown automatically on load
 });
@@ -488,7 +489,7 @@ rulesBox.appendChild(rulesContent);
 
 // Close button area
 const rulesCloseRow = document.createElement("div");
-Object.assign(rulesCloseRow.style, { textAlign: "right", marginTop: "10px" });
+Object.assign(rulesCloseRow.style, { textAlign: "right", fontFamily: "Arial, sans-serif", marginTop: "10px" });
 const rulesCloseBtn = document.createElement("button");
 rulesCloseBtn.textContent = "Close";
 // use the shared stylesheet class instead of inline styles
