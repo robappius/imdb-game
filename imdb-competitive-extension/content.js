@@ -362,10 +362,126 @@ uiBox.appendChild(statusDiv);
 // hint
 const hintDiv = document.createElement("div");
 hintDiv.style.fontSize = "11px";
-hintDiv.style.opacity = "0";
-hintDiv.style.marginTop = "8px";
+hintDiv.style.opacity = "100";
+hintDiv.style.marginTop = "2px";
+hintDiv.style.marginBottom = "12px";
 hintDiv.innerHTML = "Create a game to generate an ID and enter the lobby. When 2 players are present the host can start the round.";
 uiBox.appendChild(hintDiv);
+
+// ----------------------
+// RULES MODAL
+// Add a Rules button at the bottom of the main modal which opens a secondary modal overlay
+const rulesBtn = document.createElement("button");
+rulesBtn.textContent = "Rules";
+// use the shared stylesheet class instead of inline styles
+rulesBtn.className = "good-button";
+uiBox.appendChild(rulesBtn);
+
+// Create the overlay that will appear on top of everything
+const rulesOverlay = document.createElement("div");
+Object.assign(rulesOverlay.style, {
+  position: "fixed",
+  inset: "0",
+  background: "rgba(0,0,0,0.5)",
+  zIndex: 1000002,
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "10px",
+  boxSizing: "border-box",
+  display: "none" // ensure default is hidden and never shown automatically on load
+});
+rulesOverlay.setAttribute('aria-hidden', 'true');
+rulesOverlay.setAttribute('role', 'dialog');
+rulesOverlay.setAttribute('aria-modal', 'true');
+
+// Inner rules box
+const rulesBox = document.createElement("div");
+Object.assign(rulesBox.style, {
+  width: "420px",
+  maxWidth: "100%",
+  // match main modal golden styling
+  background: "linear-gradient(295deg,rgba(110, 88, 10, 1) 0%, rgba(245, 197, 24, 1) 100%)",
+  color: "#000", // black text like main UI
+  borderRadius: "10px",
+  padding: "16px",
+  boxSizing: "border-box",
+  boxShadow: "0 6px 24px rgba(0,0,0,0.4)",
+  textAlign: "left",
+  fontSize: "14px",
+  lineHeight: "1.4"
+});
+rulesOverlay.appendChild(rulesBox);
+
+// Title
+const rulesTitle = document.createElement("div");
+rulesTitle.textContent = "Rules";
+Object.assign(rulesTitle.style, {   fontFamily: "Arial, sans-serif", fontWeight: "700", fontSize: "16px", marginBottom: "8px", color: "#000" });
+rulesBox.appendChild(rulesTitle);
+
+// Rules content (ordered list)
+const rulesContent = document.createElement("div");
+rulesContent.innerHTML = `
+<ol style="font-family: Arial, sans-serif; padding-left: 18px; margin: 0 0 10px 0; list-style-type: decimal;">
+<li>Click through actors, movies and TV shows to reach the destination actor generated</li>
+<li>Only the clicks on actors will be counted in the click counter</li>
+<li>The player with the least actor clicks wins! If players are tied in click count then the player that reached the destination actor the fastest wins</li>
+</ol>
+`;
+rulesBox.appendChild(rulesContent);
+
+// Close button area
+const rulesCloseRow = document.createElement("div");
+Object.assign(rulesCloseRow.style, { textAlign: "right", fontFamily: "Arial, sans-serif", marginTop: "10px" });
+const rulesCloseBtn = document.createElement("button");
+rulesCloseBtn.textContent = "Close";
+// use the shared stylesheet class instead of inline styles
+rulesCloseBtn.className = "good-button";
+rulesCloseRow.appendChild(rulesCloseBtn);
+rulesBox.appendChild(rulesCloseRow);
+
+// Append to body so it overlays the entire page (including the uiBox)
+document.body.appendChild(rulesOverlay);
+
+// Open / close handlers
+function openRulesModal() {
+  rulesOverlay.style.display = "flex";
+  rulesOverlay.setAttribute('aria-hidden', 'false');
+  // trap focus to close button for accessibility
+  rulesCloseBtn.focus();
+  // prevent background scrolling while modal is open
+  document.body.style.overflow = "hidden";
+}
+function closeRulesModal() {
+  rulesOverlay.style.display = "none";
+  rulesOverlay.setAttribute('aria-hidden', 'true');
+  document.body.style.overflow = "";
+  // return focus to the rules button
+  rulesBtn.focus();
+}
+
+rulesBtn.addEventListener("click", (e) => {
+  e.stopPropagation();
+  openRulesModal();
+});
+
+rulesCloseBtn.addEventListener("click", (e) => {
+  e.stopPropagation();
+  closeRulesModal();
+});
+
+// close when clicking outside the rules box
+rulesOverlay.addEventListener("click", (e) => {
+  if (e.target === rulesOverlay) {
+    closeRulesModal();
+  }
+});
+
+// close on Escape key
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && rulesOverlay.style.display === "flex") {
+    closeRulesModal();
+  }
+});
 
 // ----------------------
 // Initialization
@@ -395,7 +511,7 @@ uiBox.appendChild(hintDiv);
     }
     refreshStatusUI();
     updateGameControls();
-    console.log("IMDB Click Race initialized, playerId:", playerId, "name:", displayName, "redirected:", hasRedirected, "finished:", finished, "roundStartedAt:", roundStartedAt, "lastReadyAt:", lastReadyAt);
+    console.log("IMDB Click Race initialized", { playerId, displayName, hasRedirected, finished, roundStartedAt, lastReadyAt, gameId });
   } catch (err) {
     console.error("Init error", err);
   }
@@ -464,114 +580,131 @@ function refreshStatusUI(snapshotGame) {
     storageSet({ hasRedirected }).catch(() => {});
   }
 
-  // --- WINNER LOGIC FOR UI ---
-  if (snapshotGame && snapshotGame.winner && snapshotGame.winnerClicks) {
+  // --- WINNER LOGIC FOR UI (replacement block) ---
+  if (snapshotGame && snapshotGame.status === 'finished') {
     const players = snapshotGame.players || {};
 
-    // 1. Separate players into two groups
+    // 1. Build players array
     const allPlayers = Object.keys(players).map(pid => ({ pid, ...players[pid] }));
 
+    // finished players: sort by clicks then finishedAt (earliest first)
     const finishedPlayers = allPlayers
       .filter(p => p.finishedAt && !p.gaveUp)
-      .sort((a, b) => (a.clicks || Infinity) - (b.clicks || Infinity));
+      .sort((a, b) => {
+        const ac = Number(a.clicks ?? Infinity);
+        const bc = Number(b.clicks ?? Infinity);
+        if (ac !== bc) return ac - bc;
+        const af = Number(a.finishedAt ?? Infinity);
+        const bf = Number(b.finishedAt ?? Infinity);
+        return af - bf;
+      });
 
+    // gave up players: sort by gaveUpAt ascending (first to give up at the top)
     const gaveUpPlayers = allPlayers
-      .filter(p => p.gaveUp);
+      .filter(p => p.gaveUp)
+      .sort((a, b) => {
+        const aa = Number(a.gaveUpAt ?? Infinity);
+        const ba = Number(b.gaveUpAt ?? Infinity);
+        return aa - ba;
+      });
 
     leaderboardList.innerHTML = '';
 
     if (finishedPlayers.length > 0) {
-        // Display 1st Place (The Winner)
-        const winner = finishedPlayers[0];
-        const winnerName = winner.name || winner.pid;
-        const baseStart = snapshotGame.startedAt || roundStartedAt;
-        const winnerTime = (winner.finishedAt && baseStart) ? formatDuration(winner.finishedAt - baseStart) : "";
-        winnerText.innerHTML = `${winnerName} WINS! ${winnerTime ? `${winnerTime}` : ''}`;
+      // Prefer server-declared winner if present and valid, otherwise fall back to sorted list
+      const serverWinnerPid = snapshotGame.winner;
+      let winner;
+      if (serverWinnerPid && players[serverWinnerPid] && players[serverWinnerPid].finishedAt) {
+        winner = { pid: serverWinnerPid, ...players[serverWinnerPid] };
+      } else {
+        winner = finishedPlayers[0];
+      }
 
-        // Display the rest of the finished leaderboard
-        finishedPlayers.forEach((player, index) => {
-            const rank = index + 1;
-            const playerName = player.name || player.pid;
-            const clicks = player.clicks;
-            const base = snapshotGame.startedAt || roundStartedAt;
-            const playerTime = (player.finishedAt && base) ? formatDuration(player.finishedAt - base) : '';
+      const winnerName = winner.name || winner.pid;
+      const baseStart = snapshotGame.startedAt || roundStartedAt;
+      const winnerTime = (winner.finishedAt && baseStart) ? formatDuration(winner.finishedAt - baseStart) : "";
+      winnerText.innerHTML = `${winnerName} WINS! ${winnerTime ? `${winnerTime}` : ''}`;
 
-            const listItem = document.createElement('div');
-            listItem.style.display = 'flex';
-            listItem.style.justifyContent = 'space-between';
-            listItem.style.alignItems = 'center';
-            listItem.style.gap = '8px';
-            listItem.style.width = '100%';
+      // render finished leaderboard (already sorted)
+      finishedPlayers.forEach((player, index) => {
+        const rank = index + 1;
+        const playerName = player.name || player.pid;
+        const clicks = player.clicks;
+        const base = snapshotGame.startedAt || roundStartedAt;
+        const playerTime = (player.finishedAt && base) ? formatDuration(player.finishedAt - base) : '';
 
-            const left = document.createElement('div');
-            // Use correct ordinal suffix
-            const suffix = rank === 1 ? 'st' : (rank === 2 ? 'nd' : (rank === 3 ? 'rd' : 'th'));
-            left.innerHTML = `${rank}${suffix} Place: <strong>${playerName}</strong> (${clicks} clicks)`;
-            left.style.textAlign = 'left';
-            left.style.flex = '1';
+        const listItem = document.createElement('div');
+        listItem.style.display = 'flex';
+        listItem.style.justifyContent = 'space-between';
+        listItem.style.alignItems = 'center';
+        listItem.style.gap = '8px';
+        listItem.style.width = '100%';
 
-            const timeDiv = document.createElement('div');
-            timeDiv.textContent = playerTime ? playerTime : '';
-            timeDiv.style.minWidth = '56px';
-            timeDiv.style.textAlign = 'right';
-            timeDiv.style.opacity = player.pid === playerId ? '1' : '0.95';
+        const left = document.createElement('div');
+        const suffix = rank === 1 ? 'st' : (rank === 2 ? 'nd' : (rank === 3 ? 'rd' : 'th'));
+        left.innerHTML = `${rank}${suffix} Place: <strong>${playerName}</strong> (${clicks} clicks)`;
+        left.style.textAlign = 'left';
+        left.style.flex = '1';
 
-            listItem.appendChild(left);
-            listItem.appendChild(timeDiv);
+        const timeDiv = document.createElement('div');
+        timeDiv.textContent = playerTime ? playerTime : '';
+        timeDiv.style.minWidth = '56px';
+        timeDiv.style.textAlign = 'right';
+        timeDiv.style.opacity = player.pid === playerId ? '1' : '0.95';
 
-            // Highlight the current player if they finished
-            if (player.pid === playerId) {
-                 left.style.fontWeight = '700';
-                 left.style.color = '#fff';
-            }
+        listItem.appendChild(left);
+        listItem.appendChild(timeDiv);
 
-            leaderboardList.appendChild(listItem);
-        });
+        if (player.pid === playerId) {
+          left.style.fontWeight = '700';
+          left.style.color = '#fff';
+        }
 
+        leaderboardList.appendChild(listItem);
+      });
     } else {
-        // This handles cases where a game ends but nobody actually finished (e.g. everyone gave up)
-        winnerText.innerHTML = `Game Ended`;
-        leaderboardList.innerHTML = 'No finishers recorded.';
+      // No finishers: show Game Ended and indicate no finishers
+      winnerText.innerHTML = `Game Ended`;
+      leaderboardList.innerHTML = 'No finishers recorded.';
     }
 
-    // 2. Append Gave Up players at the bottom
+    // Append gave-up players at bottom in order who gave up first -> last
     if (gaveUpPlayers.length > 0) {
-        const divider = document.createElement('div');
-        divider.style.borderTop = '1px dashed rgba(245, 197, 24, 0.4)';
-        divider.style.margin = '8px 0';
-        leaderboardList.appendChild(divider);
+      const divider = document.createElement('div');
+      divider.style.borderTop = '1px dashed rgba(245, 197, 24, 0.4)';
+      divider.style.margin = '8px 0';
+      leaderboardList.appendChild(divider);
 
-        const gaveUpHeader = document.createElement('div');
-        gaveUpHeader.textContent = 'Non-Finishers:';
-        gaveUpHeader.style.fontWeight = 'bold';
-        gaveUpHeader.style.marginTop = '4px';
-        leaderboardList.appendChild(gaveUpHeader);
+      const gaveUpHeader = document.createElement('div');
+      gaveUpHeader.textContent = 'Non-Finishers:';
+      gaveUpHeader.style.fontWeight = 'bold';
+      gaveUpHeader.style.marginTop = '4px';
+      leaderboardList.appendChild(gaveUpHeader);
 
-        gaveUpPlayers.forEach(player => {
-            const playerName = player.name || player.pid;
-            const listItem = document.createElement('div');
-            listItem.innerHTML = `${playerName} — Gave Up 🏳️`;
-            listItem.style.textAlign = 'center';
-            listItem.style.opacity = '0.8';
+      gaveUpPlayers.forEach(player => {
+        const playerName = player.name || player.pid;
+        const listItem = document.createElement('div');
+        const gaveUpAt = player.gaveUpAt ? new Date(Number(player.gaveUpAt)).toLocaleTimeString() : '';
+        listItem.innerHTML = `${playerName} — Gave Up ${gaveUpAt ? `(${gaveUpAt})` : ''} 🏳️`;
+        listItem.style.textAlign = 'center';
+        listItem.style.opacity = '0.8';
 
-            if (player.pid === playerId) {
-                 listItem.style.fontWeight = 'bold';
-                 listItem.style.color = '#fff';
-                 listItem.style.opacity = '1';
-            }
+        if (player.pid === playerId) {
+          listItem.style.fontWeight = 'bold';
+          listItem.style.color = '#fff';
+          listItem.style.opacity = '1';
+        }
 
-            leaderboardList.appendChild(listItem);
-        });
+        leaderboardList.appendChild(listItem);
+      });
     }
 
     winnerBox.style.display = "flex"; // Show the overlay
-
     // Hide standard lobby/controls
     lobbyBox.style.display = "none";
     btnRow.style.display = "none";
     nameRow.style.display = "none";
     actionRow.style.display = "none";
-
   } else {
     // Hide winner box if no winner or game is not finished
     winnerBox.style.display = "none";
@@ -614,18 +747,30 @@ function renderPlayersList(playersObj) {
 
   const allPlayers = Object.keys(playersObj).map(pid => ({ pid, ...playersObj[pid] }));
 
-  // 1. Sort Finished players by clicks
+  // 1. Sort Finished players by clicks then finishedAt
   const finishedPlayers = allPlayers
     .filter(p => p.finishedAt && !p.gaveUp)
-    .sort((a, b) => (a.clicks || Infinity) - (b.clicks || Infinity));
+    .sort((a, b) => {
+       const ac = Number(a.clicks ?? Infinity);
+       const bc = Number(b.clicks ?? Infinity);
+       if (ac !== bc) return ac - bc;
+       const af = Number(a.finishedAt ?? Infinity);
+       const bf = Number(b.finishedAt ?? Infinity);
+       return af - bf;
+    });
 
   // 2. Collect Active players (not finished and not given up)
   const activePlayers = allPlayers
     .filter(p => !p.finishedAt && !p.gaveUp);
 
-  // 3. Collect Gave Up players
+  // 3. Collect Gave Up players (order by gaveUpAt)
   const gaveUpPlayers = allPlayers
-    .filter(p => p.gaveUp);
+    .filter(p => p.gaveUp)
+    .sort((a, b) => {
+      const aa = Number(a.gaveUpAt ?? Infinity);
+      const ba = Number(b.gaveUpAt ?? Infinity);
+      return aa - ba;
+    });
 
   // Combine in order: Finished, Active, Gave Up
   const sortedPlayers = [...finishedPlayers, ...activePlayers, ...gaveUpPlayers];
@@ -642,7 +787,9 @@ function renderPlayersList(playersObj) {
       const dur = (base && p.finishedAt) ? formatDuration(p.finishedAt - base) : '';
       statusLabel = ` — ${p.clicks} clicks ✅ finished${dur ? ` — ${dur}` : ''}`;
     } else if (p.gaveUp) {
-      statusLabel = " — GAVE UP 🏳️";
+      // include gaveUpAt if present
+      const gaveUpAt = p.gaveUpAt ? ` (${new Date(Number(p.gaveUpAt)).toLocaleTimeString()})` : '';
+      statusLabel = ` — GAVE UP${gaveUpAt} 🏳️`;
       row.style.opacity = '0.6';
     } else if (p.ready) {
       statusLabel = " — READY ⏱️";
@@ -676,6 +823,7 @@ function updateGameControls() {
 // Game operations
 
 // Host action: start a new round using players who are ready or all players that are joined (non-gaveUp)
+// REPLACE the existing startRound() with this function
 async function startRound() {
   if (!gameId) throw new Error("No gameId");
   // Fetch latest snapshot to avoid races
@@ -690,15 +838,38 @@ async function startRound() {
   // all non-gaveUp players (joined)
   const allNonGaveUp = Object.keys(players).filter(pid => players[pid] && !players[pid].gaveUp);
 
-  // Decide participants:
+  // Decide readyPids for selection rules:
   // - If 2+ explicit ready -> use explicitReady
-  // - Else if explicitReady is <2 -> fall back to including allNonGaveUp
+  // - Else -> fall back to allNonGaveUp
   let readyPids = explicitReady.length >= 2 ? explicitReady : allNonGaveUp;
 
   // If still <2, allow host solo if they're the only joined player
   const hostSoloAllowed = (readyPids.length === 1 && readyPids[0] === playerId && role === 'host');
 
-  if (readyPids.length < 2 && !hostSoloAllowed) {
+  // Build participants map:
+  // 1) Include optimistic participants map (written by guests when they Play Again)
+  // 2) Include non-gaveUp players from snapshot.players
+  // 3) Include readyPids
+  // 4) Always include the host (playerId) so the host can't accidentally exclude themself
+  const participants = {};
+  const existingParticipants = snapshot.participants || {};
+  Object.keys(existingParticipants).forEach(pid => {
+    if (existingParticipants[pid]) participants[pid] = true;
+  });
+
+  Object.keys(players).forEach(pid => {
+    if (players[pid] && !players[pid].gaveUp) participants[pid] = true;
+  });
+
+  readyPids.forEach(pid => { participants[pid] = true; });
+
+  // Ensure host is included so host can't be left out due to a previous gaveUp flag
+  if (playerId) participants[playerId] = true;
+
+  const participantIds = Object.keys(participants);
+
+  // Now decide if we have enough participants (use participants size, not readyPids length)
+  if (participantIds.length < 2 && !hostSoloAllowed) {
     alert("Need at least 2 participants to start a round (or host can start solo if alone).");
     return;
   }
@@ -706,24 +877,6 @@ async function startRound() {
   // choose new actors
   const shuffled = [...actorList].sort(() => Math.random() - 0.5);
   const newActorPair = [shuffled[0], shuffled[1]];
-
-  // Build participants map.
-  // NEW: include optimistic participants that guests may have written (snapshot.participants)
-  const participants = {};
-  const existingParticipants = snapshot.participants || {};
-
-  // Start with existing participants (but only include players that are not marked gaveUp on server to be safe)
-  Object.keys(existingParticipants).forEach(pid => {
-    if (existingParticipants[pid]) {
-      // ensure the player still exists and hasn't gaveUp (defensive)
-      if (!players[pid] || !players[pid].gaveUp) {
-        participants[pid] = true;
-      }
-    }
-  });
-
-  // Ensure readyPids are included (this will also add the host and others)
-  readyPids.forEach(pid => { participants[pid] = true; });
 
   // Patch game root with new round metadata, clear previous startedAt/winner etc
   await dbPatch(`${gameId}`, {
@@ -736,17 +889,19 @@ async function startRound() {
     participants
   });
 
-  // Reset each participant's player record (clicks, finishedAt, gaveUp=false, ready=false)
-  const resets = Object.keys(participants).map(pid => {
-    return dbPatch(`${gameId}/players/${pid}`, { clicks: 0, finishedAt: null, gaveUp: false, ready: false });
+  // Reset each participant's player record (clicks, finishedAt, gaveUp=false, ready=false, gaveUpAt=null)
+  const resets = participantIds.map(pid => {
+    // carry forward name if available; defensive
+    const name = (players[pid] && players[pid].name) ? players[pid].name : undefined;
+    const payload = { clicks: 0, finishedAt: null, gaveUp: false, ready: false, gaveUpAt: null };
+    if (name) payload.name = name;
+    return dbPatch(`${gameId}/players/${pid}`, payload);
   });
 
-  // Wait for all resets to finish
   await Promise.all(resets);
 
-  console.log("Started new round with participants:", Object.keys(participants));
+  console.log("Started new round with participants:", participantIds);
 }
-
 async function createGameAndStart() {
   const id = randId(5);
   gameId = id;
@@ -759,7 +914,7 @@ async function createGameAndStart() {
   const gameObj = {
     actorA: null,
     actorB: null,
-    players: { [playerId]: { clicks: 0, name: displayName, gaveUp: false, ready: true } }, // host ready by default so they can start solo
+    players: { [playerId]: { clicks: 0, name: displayName, gaveUp: false, ready: true, gaveUpAt: null } }, // host ready by default so they can start solo
     status: "lobby",
     winner: null,
     winnerClicks: null,
@@ -797,7 +952,7 @@ async function joinGameWithId(inputId) {
     finished = false;
 
     // add self to players (don't auto-ready)
-    await dbPatch(`${gameId}/players/${playerId}`, { clicks: 0, name: displayName, gaveUp: false, ready: false });
+    await dbPatch(`${gameId}/players/${playerId}`, { clicks: 0, name: displayName, gaveUp: false, ready: false, gaveUpAt: null });
     await storageSet({ gameId, actorPair, clicks, finished });
     role = 'guest';
     await storageSet({ role });
@@ -821,9 +976,10 @@ async function giveUpGame() {
     await storageSet({ finished });
 
     try {
-        // 1. Set the gaveUp flag for the current player (don't set finishedAt)
-        await dbPatch(`${gameId}/players/${playerId}`, { gaveUp: true, finishedAt: null, name: displayName });
-        
+        // 1. Set the gaveUp flag and record when the player gave up
+        const gaveUpAt = Date.now();
+        await dbPatch(`${gameId}/players/${playerId}`, { gaveUp: true, finishedAt: null, name: displayName, gaveUpAt });
+
         // 2. Fetch the updated game state
         const snapshot = await dbGet(`${gameId}`);
         const players = snapshot?.players || {};
@@ -837,10 +993,11 @@ async function giveUpGame() {
         const activePlayers = playerIds.filter(pid => 
             players[pid] && !players[pid].finishedAt && !players[pid].gaveUp
         );
-        
-        // Game ends if: 
-        // a) There is exactly one valid finisher AND
-        // b) There are zero active, non-finished players left.
+        const gaveUpPlayers = playerIds.filter(pid =>
+            players[pid] && players[pid].gaveUp
+        );
+
+        // a) If there is exactly one valid finisher AND there are zero active players, declare winner (existing behavior)
         if (finishedPlayers.length === 1 && activePlayers.length === 0) {
             const winnerPid = finishedPlayers[0];
             const winnerClicks = players[winnerPid].clicks;
@@ -855,10 +1012,23 @@ async function giveUpGame() {
             
             // Update UI with the final state
             refreshStatusUI(await dbGet(`${gameId}`));
-        } else {
-            // If the game didn't end instantly, update UI with the 'gave up' status
-            refreshStatusUI(snapshot); 
+            return;
         }
+
+        // b) If there are NO finishers and NO active players, everyone gave up -> end the game so clients show gave-up board
+        if (finishedPlayers.length === 0 && activePlayers.length === 0 && gaveUpPlayers.length > 0) {
+            await dbPatch(`${gameId}`, {
+              winner: null,
+              winnerClicks: null,
+              status: "finished"
+            });
+            console.log(`All players gave up; ending game and showing gave-up board.`);
+            refreshStatusUI(await dbGet(`${gameId}`));
+            return;
+        }
+
+        // else: just update the UI with the 'gave up' status
+        refreshStatusUI(snapshot); 
 
     } catch (err) {
         console.error("Failed to give up game", err);
@@ -956,10 +1126,7 @@ async function pollOnce() {
 
       const recentReadyRace = lastReadyAt && snapshot.startedAt && Math.abs(snapshot.startedAt - lastReadyAt) < 5000;
 
-      const amParticipant = explicitlyIncluded ||
-                            playerReadyFlag ||
-                            (!snapshot.participants && serverPlayerRec && !playerGaveUpFlag) ||
-                            recentReadyRace;
+      const amParticipant = explicitlyIncluded || playerReadyFlag || (serverPlayerRec && !playerGaveUpFlag) || recentReadyRace;
 
       if (amParticipant) {
         // Clear local stale finished/hasRedirected flags for reliable redirect
@@ -1006,32 +1173,48 @@ async function pollOnce() {
         }
     }
 
-    if (conclude && !snapshot.winner && role === 'host') { 
-      let winnerPid;
-      let minClicks;
-
-      if (finishedPlayers.length > 0) {
-        // If there are finishers, find the one with min clicks
-        winnerPid = finishedPlayers[0];
-        minClicks = players[winnerPid].clicks || Infinity;
-        
-        for (const pid of finishedPlayers) {
-          const c = Number(players[pid].clicks) || Infinity;
-          if (c < minClicks) { minClicks = c; winnerPid = pid; }
-        }
-      } else {
-        // This case should be prevented by the 'finishedPlayers.length > 0' check.
-        return; 
+    if (conclude && !snapshot.winner && role === 'host') {
+      // New tie-aware selection:
+      // 1) Find minimum click count among finishers
+      // 2) From players with that click count, pick the one with the smallest finishedAt (earliest)
+      let winnerPid = null;
+      let minClicks = Infinity;
+    
+      // Determine minClicks first
+      for (const pid of finishedPlayers) {
+        const rec = players[pid];
+        const c = Number(rec?.clicks) || Infinity;
+        if (c < minClicks) minClicks = c;
       }
-      
+    
+      // Collect candidates with clicks === minClicks and pick earliest finishedAt
+      let earliestFinishedAt = Infinity;
+      for (const pid of finishedPlayers) {
+        const rec = players[pid];
+        const c = Number(rec?.clicks) || Infinity;
+        const finishedAt = Number(rec?.finishedAt) || Infinity;
+        if (c === minClicks) {
+          if (finishedAt < earliestFinishedAt) {
+            earliestFinishedAt = finishedAt;
+            winnerPid = pid;
+          }
+        }
+      }
+    
+      if (!winnerPid) {
+        // Fallback (defensive): pick first finished player
+        winnerPid = finishedPlayers[0];
+        minClicks = Number(players[winnerPid].clicks) || Infinity;
+      }
+    
       // Update DB with winner and set status to finished
-      await dbPatch(`${gameId}`, { 
-          winner: winnerPid, 
-          winnerClicks: minClicks, 
-          status: "finished",
-          startedAt: null // clear startedAt to indicate round ended
+      await dbPatch(`${gameId}`, {
+        winner: winnerPid,
+        winnerClicks: minClicks,
+        status: "finished",
+        startedAt: null // clear startedAt to indicate round ended
       });
-      console.log(`Host set winner: ${winnerPid} in ${minClicks} clicks.`);
+      console.log(`Host set winner: ${winnerPid} in ${minClicks} clicks (earliest finishedAt).`);
     }
 
   } catch (err) {
@@ -1159,6 +1342,7 @@ nameSaveBtn.addEventListener("click", async () => {
 
 // Play Again Button Listener (mark ready + return to lobby)
 // Moved into named handler so it can be invoked by the button itself and by a fallback click detector
+// --- REPLACE handlePlayAgainClick with this version ---
 async function handlePlayAgainClick() {
   if (!gameId) return;
   try {
@@ -1170,14 +1354,13 @@ async function handlePlayAgainClick() {
     await storageSet({ clicks, finished, hasRedirected, lastReadyAt });
 
     // Mark this player ready for the next round (don't leave the game)
-    await dbPatch(`${gameId}/players/${playerId}`, { ready: true, gaveUp: false, finishedAt: null, clicks: 0, name: displayName });
+    await dbPatch(`${gameId}/players/${playerId}`, { ready: true, gaveUp: false, finishedAt: null, clicks: 0, name: displayName, gaveUpAt: null });
 
     // Also write an optimistic participants entry so the host's startRound can pick this guest up
-    // (this is harmless if the host later overwrites participants)
     await dbPatch(`${gameId}/participants/${playerId}`, true);
 
-    // Move the game into lobby mode so host can start the next round; clear previous winner/startedAt/participants
-    await dbPatch(`${gameId}`, { status: 'lobby', winner: null, winnerClicks: null, startedAt: null, participants: null });
+    // Move the game into lobby mode so host can start the next round; clear previous winner/startedAt (do NOT clear participants)
+    await dbPatch(`${gameId}`, { status: 'lobby', winner: null, winnerClicks: null, startedAt: null });
 
     // Refresh UI to show lobby state
     const snap = await dbGet(`${gameId}`);
