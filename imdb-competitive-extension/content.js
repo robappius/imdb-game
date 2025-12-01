@@ -140,22 +140,6 @@ let lastReadyAt = null; // timestamp when user clicked Play Again (local helper 
 // UI overlay (reworked: includes name input + players list)
 const uiBox = document.createElement("div");
 uiBox.id = "uiOverlay"
-Object.assign(uiBox.style, {
-  position: "fixed",
-  bottom: "20px",
-  right: "20px",
-  width: "360px",
-  maxWidth: "calc(100% - 40px)",
-  background: "linear-gradient(295deg,rgba(110, 88, 10, 1) 0%, rgba(245, 197, 24, 1) 100%)",
-  color: "#000",
-  padding: "12px",
-  borderRadius: "10px",
-  boxShadow: "0 0 10px rgba(0,0,0,0.3)",
-  zIndex: 999999,
-  fontFamily: "Arial, sans-serif",
-  fontSize: "13px",
-  lineHeight: "1.3"
-});
 document.body.appendChild(uiBox);
 
 const header = document.createElement("div");
@@ -187,41 +171,16 @@ nameRow.appendChild(nameInput);
 const nameSaveBtn = document.createElement("button");
 nameSaveBtn.textContent = "Save";
 nameSaveBtn.id = "nameSaveBtn";
-nameSaveBtn.className = "good-button";
+nameSaveBtn.className = "blue-button";
 nameRow.appendChild(nameSaveBtn);
 
 // Global round timer (moved below nameRow and above players lobby list, left aligned)
 const roundTimerDiv = document.createElement("div");
-Object.assign(roundTimerDiv.style, {
-  fontSize: "16px",
-  fontWeight: "700",
-  margin: "8px 0",
-  display: "none",
-  textAlign: "left",
-  width: "100%"
-});
+roundTimerDiv.id = "roundTimer";
 
 // --- WINNER MESSAGE CONTAINER ---
 const winnerBox = document.createElement("div");
 winnerBox.id = "winnerbox";
-Object.assign(winnerBox.style, {
-  position: "absolute",
-  top: "0",
-  left: "0",
-  width: "100%",
-  height: "100%",
-  background: "linear-gradient(295deg,rgba(62, 73, 173, 1) 0%, rgba(90, 101, 196, 1) 100%)",
-  color: "#f5c518",
-  display: "none",
-  flexDirection: "column",
-  justifyContent: "center",
-  alignItems: "center",
-  borderRadius: "10px",
-  textAlign: "center",
-  fontSize: "20px",
-  padding: "12px",
-  boxSizing: "border-box"
-});
 
 // Container for the winner/leaderboard text
 const winnerTextContainer = document.createElement("div");
@@ -230,44 +189,20 @@ winnerBox.appendChild(winnerTextContainer);
 
 // Main winner text element (for 1st place)
 const winnerText = document.createElement("div");
-Object.assign(winnerText.style, {
-  fontWeight: "bold",
-  fontSize: "1.4em",
-  marginBottom: "8px"
-});
+winnerText.id = "winnerText"
 winnerTextContainer.appendChild(winnerText);
 
 // Leaderboard list element (for 2nd, 3rd, etc. and Give Up players)
 const leaderboardList = document.createElement("div");
-Object.assign(leaderboardList.style, {
-    fontSize: "0.8em",
-    fontWeight: "normal",
-    display: "flex",
-    flexDirection: "column",
-    gap: "6px",
-    maxWidth: "90%",
-    margin: "0 auto"
-});
+leaderboardList.id = "leaderboardList";
 winnerTextContainer.appendChild(leaderboardList);
 
 
 // Play Again Button
 const playAgainBtn = document.createElement("button");
 playAgainBtn.textContent = "Play Again";
-// Make the whole visible button area clickable: full-width, block, comfortable padding
-Object.assign(playAgainBtn.style, {
-    padding: "12px 14px",
-    borderRadius: "24px",
-    background: "#f5c518",
-    color: "#000",
-    fontWeight: "bold",
-    cursor: "pointer",
-    display: "block",
-    width: "100%",
-    marginTop: "8px",
-    textAlign: "center",
-    touchAction: "manipulation"
-});
+playAgainBtn.className = "yellow-button";
+
 playAgainBtn.style.zIndex = "1000001";
 playAgainBtn.style.pointerEvents = "auto";
 winnerBox.appendChild(playAgainBtn);
@@ -281,12 +216,12 @@ uiBox.appendChild(btnRow);
 
 const startBtn = document.createElement("button");
 startBtn.textContent = "Create Game";
-startBtn.className = "good-button";
+startBtn.className = "blue-button";
 btnRow.appendChild(startBtn);
 
 const joinBtn = document.createElement("button");
 joinBtn.textContent = "Join Game";
-joinBtn.className = "good-button";
+joinBtn.className = "blue-button";
 btnRow.appendChild(joinBtn);
 
 // Action buttons (Leave/Give Up)
@@ -299,14 +234,14 @@ uiBox.appendChild(actionRow);
 const giveUpBtn = document.createElement("button");
 giveUpBtn.textContent = "Give Up";
 giveUpBtn.id = "biveUpBtn"
-giveUpBtn.className = "good-button";
+giveUpBtn.className = "blue-button";
 actionRow.appendChild(giveUpBtn);
 
 // Copy Code Button
 const copybtn = document.createElement("button");
 copybtn.textContent = "Copy Code";
 copybtn.id = 'copybtn';
-copybtn.className = "good-button"
+copybtn.className = "blue-button"
 actionRow.appendChild(copybtn);
 
 // Copy Button code to copy code (non-blocking notice)
@@ -360,7 +295,7 @@ function showCopyOnButton(text, color) {
 // START ROUND button (host-only)
 const startRoundBtn = document.createElement("button");
 startRoundBtn.textContent = "Start Round";
-startRoundBtn.className = "good-button";
+startRoundBtn.className = "blue-button";
 actionRow.appendChild(startRoundBtn);
 
 startRoundBtn.addEventListener("click", async () => {
@@ -375,7 +310,7 @@ startRoundBtn.addEventListener("click", async () => {
 
 const leaveBtn = document.createElement("button");
 leaveBtn.textContent = "Leave Game";
-leaveBtn.className ="good-button";
+leaveBtn.className ="blue-button";
 actionRow.appendChild(leaveBtn);
 
 // players list (lobby)
@@ -415,7 +350,7 @@ joinRow.appendChild(joinInput);
 const joinSubmit = document.createElement("button");
 joinSubmit.textContent = "Join";
 joinSubmit.id = "joinSubmit";
-joinSubmit.className = "good-button";
+joinSubmit.className = "blue-button";
 joinRow.appendChild(joinSubmit);
 
 // status text
