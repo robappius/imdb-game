@@ -374,7 +374,7 @@ uiBox.appendChild(hintDiv);
 const rulesBtn = document.createElement("button");
 rulesBtn.textContent = "Rules";
 // use the shared stylesheet class instead of inline styles
-rulesBtn.className = "good-button";
+rulesBtn.className = "yellow-button";
 uiBox.appendChild(rulesBtn);
 
 // Create the overlay that will appear on top of everything
@@ -435,7 +435,7 @@ Object.assign(rulesCloseRow.style, { textAlign: "right", fontFamily: "Arial, san
 const rulesCloseBtn = document.createElement("button");
 rulesCloseBtn.textContent = "Close";
 // use the shared stylesheet class instead of inline styles
-rulesCloseBtn.className = "good-button";
+rulesCloseBtn.className = "yellow-button";
 rulesCloseRow.appendChild(rulesCloseBtn);
 rulesBox.appendChild(rulesCloseRow);
 
