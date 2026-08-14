@@ -889,6 +889,22 @@ statusDiv.style.fontSize = "15px";
 statusDiv.style.fontWeight = "700";
 panelContent.appendChild(statusDiv);
 
+// Breadcrumb — shows the player's click path during an active round
+const breadcrumbBox = document.createElement('div');
+breadcrumbBox.id = 'race-breadcrumb';
+Object.assign(breadcrumbBox.style, {
+  display: 'none',
+  marginTop: '8px',
+  marginBottom: '2px',
+  fontSize: '11px',
+  lineHeight: '1.7',
+  wordBreak: 'break-word',
+  background: 'rgba(0,0,0,0.05)',
+  borderRadius: '5px',
+  padding: '7px 9px',
+});
+panelContent.appendChild(breadcrumbBox);
+
 // hint
 const hintDiv = document.createElement("div");
 hintDiv.style.fontSize = "11px";
@@ -1635,7 +1651,7 @@ async function fetchAndShowInlineOptimalPath(actorAName, actorBName, roundKey) {
       }
     }
 
-    const stored = await storageGet(['playerId', 'gameId', 'actorPair', 'clicks', 'displayName', 'role', 'hasRedirected', 'finished', 'roundStartedAt', 'lastReadyAt', 'clickPath', 'panelCollapsed', 'roundTimeLimitSec', 'chatMinimised', 'chatLastSeenTime']);
+    const stored = await storageGet(['playerId', 'gameId', 'actorPair', 'clicks', 'displayName', 'role', 'hasRedirected', 'finished', 'roundStartedAt', 'lastReadyAt', 'clickPath', 'panelCollapsed', 'roundTimeLimitSec', 'chatMinimised', 'chatLastSeenTime', 'toastedFinishers']);
     // Restore collapsed state before anything else renders
     if (stored.panelCollapsed) applyPanelCollapse(true);
     else applyPanelCollapse(false);
@@ -1663,6 +1679,7 @@ async function fetchAndShowInlineOptimalPath(actorAName, actorBName, roundKey) {
     if (stored.roundStartedAt) roundStartedAt = stored.roundStartedAt;
     if (stored.lastReadyAt) lastReadyAt = stored.lastReadyAt;
     if (stored.clickPath) clickPath = stored.clickPath;
+    if (Array.isArray(stored.toastedFinishers)) _toastedFinishers = new Set(stored.toastedFinishers);
     if (stored.roundTimeLimitSec !== undefined) {
       let sec = Number(stored.roundTimeLimitSec);
       if (!Number.isFinite(sec)) sec = 0;
@@ -1733,7 +1750,14 @@ async function fetchAndShowInlineOptimalPath(actorAName, actorBName, roundKey) {
         const _navType = performance.getEntriesByType('navigation')[0]?.type;
         if (_navType === 'back_forward' && snap?.status === 'active' && !finished) {
           clicks = clicks + 1;
-          await storageSet({ clicks });
+          // Log the page we've landed back on so the path reflects the back-and-forth.
+          // For /title/ pages the title-page tracker above has already added it (dedup handles
+          // any double). For /name/ pages this is the only chance to record the actor.
+          const backPageName = document.title.replace(/\s*[-–]\s*IMDb\s*$/i, '').trim();
+          if (backPageName && clickPath[clickPath.length - 1] !== backPageName) {
+            clickPath.push(backPageName);
+          }
+          await storageSet({ clicks, clickPath });
           await dbPatch(`${gameId}/players/${playerId}`, { clicks, name: displayName, gaveUp: false });
           showPenaltyToast();
         }
@@ -1846,9 +1870,26 @@ function escapeHtml(str) {
     .replace(/'/g, '&#39;');
 }
 
+function renderBreadcrumb() {
+  if (!roundIsActive || !clickPath || clickPath.length === 0) {
+    breadcrumbBox.style.display = 'none';
+    return;
+  }
+  breadcrumbBox.style.display = 'block';
+  const label = '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;opacity:0.45;margin-bottom:4px;">Your path so far</div>';
+  const items = clickPath.map((name, i) => {
+    // Even indices are actors, odd indices are movies/shows
+    return i % 2 === 0
+      ? `<strong>${escapeHtml(name)}</strong>`
+      : `<span style="opacity:0.6;">${escapeHtml(name)}</span>`;
+  }).join(' <span style="opacity:0.3;">→</span> ');
+  breadcrumbBox.innerHTML = label + items;
+}
+
 function refreshStatusUI(snapshotGame) {
   // Update active-round flag — filters only apply when a round is genuinely running
   roundIsActive = !!(gameId && snapshotGame && snapshotGame.status === 'active');
+  renderBreadcrumb();
 
   if (snapshotGame) {
     // In lobby, the next round's actors haven't been picked yet — always show TBD
@@ -2932,13 +2973,15 @@ async function processSnapshot(snapshot) {
       if (pid === playerId) continue; // skip self
       if (players[pid]?.finishedAt && !players[pid]?.gaveUp && !_toastedFinishers.has(pid)) {
         _toastedFinishers.add(pid);
+        storageSet({ toastedFinishers: [..._toastedFinishers] }); // persist across page navigations
         const name = players[pid].name || pid;
         const c = Number(players[pid].clicks ?? 0);
         showFinishToast(name, c);
       }
     }
   } else if (snapshot.status === 'lobby') {
-    _toastedFinishers.clear(); // reset between rounds
+    _toastedFinishers.clear();
+    storageSet({ toastedFinishers: [] }); // reset between rounds
   }
 
   // Winner determination — any client can trigger this; _concluding prevents races
@@ -2992,12 +3035,13 @@ async function processSnapshot(snapshot) {
         }
       }
 
-      // If the round ended due to timeout, treat all non-finishers as "gave up"
-      // so they stop clicking and show up under the "Did not finish" leaderboard section.
-      if (endedByTimeout) {
-        const pidsToGiveUp = playerIds.filter(
-          pid => !players[pid]?.finishedAt && !players[pid]?.gaveUp
-        );
+      // Mark any player who didn't finish (and didn't voluntarily give up) so they appear
+      // in the "Did not finish" leaderboard section — applies on timeout AND when someone
+      // else wins while they're still playing.
+      const pidsToGiveUp = playerIds.filter(
+        pid => !players[pid]?.finishedAt && !players[pid]?.gaveUp
+      );
+      if (pidsToGiveUp.length > 0) {
         await Promise.all(
           pidsToGiveUp.map(pid => dbPatch(`${gameId}/players/${pid}`, { gaveUp: true, gaveUpAt: endedAt }))
         );
@@ -3540,9 +3584,12 @@ winnerBox.addEventListener('click', (e) => {
     });
 
     // Hide the entire "Recently Viewed" section — it can contain destination actors
-    // that players could click directly to cheat
+    // that players could click directly to cheat. Also hide the outer page-background
+    // section so the black bar doesn't remain visible.
     document.querySelectorAll('.recently-viewed, section.recently-viewed-items').forEach(el => {
       hideEl(el);
+      const bg = el.closest('section.ipc-page-background');
+      if (bg) hideEl(bg);
     });
 
     // Hide individual talk show credit rows (actor filmography accordion)
@@ -3604,6 +3651,39 @@ winnerBox.addEventListener('click', (e) => {
 })();
 
 // ----------------------
+// Hide "Recently Viewed" section on ALL page types during active rounds
+// (actor pages are also covered here; the actor-page IIFE handles it too as a fallback)
+(function enforceRecentlyViewedHide() {
+  const ATTR = 'data-race-rvi-hidden';
+
+  function apply() {
+    if (roundIsActive) {
+      document.querySelectorAll('.recently-viewed, section.recently-viewed-items').forEach(el => {
+        if (!el.hasAttribute(ATTR)) {
+          el.style.display = 'none';
+          el.setAttribute(ATTR, '1');
+        }
+        // Also hide the outer black page-background section so no empty bar remains
+        const bg = el.closest('section.ipc-page-background');
+        if (bg && !bg.hasAttribute(ATTR)) {
+          bg.style.display = 'none';
+          bg.setAttribute(ATTR, '1');
+        }
+      });
+    } else {
+      document.querySelectorAll(`[${ATTR}]`).forEach(el => {
+        el.style.display = '';
+        el.removeAttribute(ATTR);
+      });
+    }
+  }
+
+  const observer = new MutationObserver(() => apply());
+  observer.observe(document.body, { childList: true, subtree: true });
+  apply();
+})();
+
+// ----------------------
 // Disarm the IMDB header logo link during active rounds only
 (function enforceLogoDisarm() {
   const ATTR = 'data-race-logo-disarmed';
@@ -3658,18 +3738,23 @@ winnerBox.addEventListener('click', (e) => {
 })();
 
 // ----------------------
-// Disarm director/writer name links on title pages during active rounds only.
-// Keeps the text visible but removes the href so they can't be used for navigation.
+// Hide director/writer rows on title pages during active rounds, and disarm
+// any remaining crew links. Stars row is kept visible (actors are fair game).
 // Also disarms the "See full cast and crew" icon link.
 (function enforceCrewLinkDisarm() {
-  const ATTR = 'data-race-crew-href';
+  const ATTR      = 'data-race-crew-href';
+  const ATTR_ROW  = 'data-race-crew-row-hidden';
 
   function apply() {
     if (roundIsActive) {
-      // Disarm director/writer name links in the principal credits block
+      // Hide director/writer rows entirely, disarm any links inside them too
       document.querySelectorAll('[data-testid="title-pc-principal-credit"]').forEach(item => {
         const label = item.querySelector('.ipc-metadata-list-item__label')?.textContent?.trim().toLowerCase() || '';
         if (label === 'director' || label === 'directors' || label === 'writer' || label === 'writers' || label === 'creator' || label === 'creators') {
+          if (!item.hasAttribute(ATTR_ROW)) {
+            item.style.display = 'none';
+            item.setAttribute(ATTR_ROW, '1');
+          }
           item.querySelectorAll('a[href]').forEach(a => {
             if (!a.hasAttribute(ATTR)) {
               a.setAttribute(ATTR, a.getAttribute('href'));
@@ -3690,6 +3775,11 @@ winnerBox.addEventListener('click', (e) => {
         }
       });
     } else {
+      // Restore hidden rows
+      document.querySelectorAll(`[${ATTR_ROW}]`).forEach(item => {
+        item.style.display = '';
+        item.removeAttribute(ATTR_ROW);
+      });
       // Restore all disarmed crew links
       document.querySelectorAll(`[${ATTR}]`).forEach(a => {
         a.setAttribute('href', a.getAttribute(ATTR));
